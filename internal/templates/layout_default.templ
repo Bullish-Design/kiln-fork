@@ -45,7 +45,7 @@ templ DefaultLayout(data *PageData) {
 			>
 				<script>
 					try {
-						if (localStorage.getItem("left-sidebar") === "true")
+						if (window.innerWidth >= 1280 && localStorage.getItem("left-sidebar") === "true")
 							document.getElementById("left-sidebar").classList.add("collapsed");
 					} catch (e) {}
 				</script>
@@ -110,7 +110,7 @@ templ DefaultLayout(data *PageData) {
 				>
 					<script>
 						try {
-							if (localStorage.getItem("right-sidebar") === "true")
+							if (window.innerWidth >= 1280 && localStorage.getItem("right-sidebar") === "true")
 								document.getElementById("right-sidebar").classList.add("collapsed");
 						} catch (e) {}
 					</script>

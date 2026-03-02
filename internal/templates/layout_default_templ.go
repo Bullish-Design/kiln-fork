@@ -107,7 +107,7 @@ func DefaultLayout(data *PageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" defer></script><script src=\"https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js\" defer></script></head><body hx-boost=\"true\" hx-select=\"#kiln-main\" hx-target=\"#kiln-main\" hx-swap=\"outerHTML\" class=\"bg-background flex overflow-hidden relative\"><!-- Left sidebar --><nav id=\"left-sidebar\" class=\"w-72 h-screen bg-sidebar border-r border-r-sidebar-border flex-col justify-between hidden xl:flex fixed xl:relative top-0 left-0 z-50\"><script>\n\t\t\t\t\ttry {\n\t\t\t\t\t\tif (localStorage.getItem(\"left-sidebar\") === \"true\")\n\t\t\t\t\t\t\tdocument.getElementById(\"left-sidebar\").classList.add(\"collapsed\");\n\t\t\t\t\t} catch (e) {}\n\t\t\t\t</script><header class=\"p-4 border-b border-b-sidebar-border flex items-center justify-between gap-2\"><a class=\"font-bold\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" defer></script><script src=\"https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js\" defer></script></head><body hx-boost=\"true\" hx-select=\"#kiln-main\" hx-target=\"#kiln-main\" hx-swap=\"outerHTML\" class=\"bg-background flex overflow-hidden relative\"><!-- Left sidebar --><nav id=\"left-sidebar\" class=\"w-72 h-screen bg-sidebar border-r border-r-sidebar-border flex-col justify-between hidden xl:flex fixed xl:relative top-0 left-0 z-50\"><script>\n\t\t\t\t\ttry {\n\t\t\t\t\t\tif (window.innerWidth >= 1280 && localStorage.getItem(\"left-sidebar\") === \"true\")\n\t\t\t\t\t\t\tdocument.getElementById(\"left-sidebar\").classList.add(\"collapsed\");\n\t\t\t\t\t} catch (e) {}\n\t\t\t\t</script><header class=\"p-4 border-b border-b-sidebar-border flex items-center justify-between gap-2\"><a class=\"font-bold\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -237,7 +237,7 @@ func DefaultLayout(data *PageData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if !data.Site.DisableLocalGraph || !data.Site.DisableTOC {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<aside id=\"right-sidebar\" class=\"w-72 h-screen bg-sidebar border-l border-l-sidebar-border hidden xl:flex fixed xl:relative top-0 right-0 z-50 flex-col\"><script>\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tif (localStorage.getItem(\"right-sidebar\") === \"true\")\n\t\t\t\t\t\t\t\tdocument.getElementById(\"right-sidebar\").classList.add(\"collapsed\");\n\t\t\t\t\t\t} catch (e) {}\n\t\t\t\t\t</script><header class=\"p-4 border-b border-b-sidebar-border flex justify-between items-center\"><div class=\"flex items-center gap-1\"><div class=\"xl:hidden flex items-center\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<aside id=\"right-sidebar\" class=\"w-72 h-screen bg-sidebar border-l border-l-sidebar-border hidden xl:flex fixed xl:relative top-0 right-0 z-50 flex-col\"><script>\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tif (window.innerWidth >= 1280 && localStorage.getItem(\"right-sidebar\") === \"true\")\n\t\t\t\t\t\t\t\tdocument.getElementById(\"right-sidebar\").classList.add(\"collapsed\");\n\t\t\t\t\t\t} catch (e) {}\n\t\t\t\t\t</script><header class=\"p-4 border-b border-b-sidebar-border flex justify-between items-center\"><div class=\"flex items-center gap-1\"><div class=\"xl:hidden flex items-center\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

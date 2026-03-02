@@ -38,14 +38,14 @@ body {
 }
 
 .collapsed {
-  @apply xl:hidden flex;
+  display: flex;
+  flex-direction: column;
 }
-
-/* @media (max-width: 768px) { */
-/*   .collapsed { */
-/*     @apply hidden; */
-/*   } */
-/* } */
+@media (width >= 80rem) {
+  .collapsed {
+    display: none;
+  }
+}
 
 .expanded #local-graph-container {
   position: fixed;

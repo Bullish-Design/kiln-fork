@@ -180,10 +180,12 @@ window.setupLeftSidebarInteraction = function () {
     btn.parentNode.replaceChild(newBtn, btn);
     newBtn.addEventListener("click", () => {
       sidebar.classList.toggle("collapsed");
-      localStorage.setItem(
-        "left-sidebar",
-        sidebar.classList.contains("collapsed"),
-      );
+      if (window.innerWidth >= 1280) {
+        localStorage.setItem(
+          "left-sidebar",
+          sidebar.classList.contains("collapsed"),
+        );
+      }
     });
   });
 };
@@ -199,10 +201,12 @@ window.setupRightSidebarInteraction = function () {
     btn.parentNode.replaceChild(newBtn, btn);
     newBtn.addEventListener("click", () => {
       sidebar.classList.toggle("collapsed");
-      localStorage.setItem(
-        "right-sidebar",
-        sidebar.classList.contains("collapsed"),
-      );
+      if (window.innerWidth >= 1280) {
+        localStorage.setItem(
+          "right-sidebar",
+          sidebar.classList.contains("collapsed"),
+        );
+      }
     });
   });
 };
@@ -220,14 +224,14 @@ window.setupMobileAutoClose = function () {
 
     if (!link && !isGraphNode) return;
 
-    // Close Sidebars
+    // Close sidebars on mobile by removing the collapsed class
+    // (on mobile, "collapsed" class = visible, default = hidden)
     ["left-sidebar", "right-sidebar"].forEach((id) => {
       const el = document.getElementById(id);
-      if (el && !el.classList.contains("collapsed")) {
-        el.classList.add("collapsed");
-        localStorage.setItem(
+      if (el && el.classList.contains("collapsed")) {
+        el.classList.remove("collapsed");
+        localStorage.removeItem(
           id === "left-sidebar" ? "left-sidebar" : "right-sidebar",
-          "true",
         );
       }
     });
