@@ -2,7 +2,6 @@
 package builder
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -123,24 +122,6 @@ func GetDisplayName(note *PageBase, field string) string {
 	return field
 }
 
-// dict allows passing multiple values to a template: {{ template "x" (dict "Key1" Val1 "Key2" Val2) }}
-func dict(values ...any) (map[string]any, error) {
-	if len(values)%2 != 0 {
-		return nil, errors.New("dict expects an even number of arguments")
-	}
-
-	d := make(map[string]any, len(values)/2)
-
-	for i := 0; i < len(values); i += 2 {
-		key, ok := values[i].(string)
-		if !ok {
-			return nil, fmt.Errorf("dict key at index %d must be a string", i)
-		}
-		d[key] = values[i+1]
-	}
-
-	return d, nil
-}
 
 // PageBase represents a '.base' file to be rendered
 type PageBase struct {

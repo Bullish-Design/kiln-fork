@@ -2,13 +2,13 @@
 package builder
 
 import (
-	"html/template"
 	"log/slog"
 	"strings"
 	textTemplate "text/template"
-	"time"
 
+	"github.com/a-h/templ"
 	"github.com/otaleghani/kiln/assets"
+	"github.com/otaleghani/kiln/internal/templates"
 )
 
 // resolveLayout looks up a Layout by name.
@@ -29,34 +29,27 @@ func resolveLayout(name string, log *slog.Logger) *Layout {
 // layouts is a key-value pairs of all available layouts
 var layouts = map[string]*Layout{
 	"default": {
-		Name:     "default",
-		HtmlPath: "default_layout.html",
-		CssPath:  "default_style.css",
-		JsPath:   "default_app.js",
+		Name:    "default",
+		CssPath: "default_style.css",
+		JsPath:  "default_app.js",
+		TemplRender: func(d *templates.PageData) templ.Component {
+			return templates.DefaultLayout(d)
+		},
 	},
 
 	"simple": {
-		Name:     "simple",
-		HtmlPath: "simple_layout.html",
-		CssPath:  "simple_style.css",
-		JsPath:   "simple_app.js",
+		Name:    "simple",
+		CssPath: "simple_style.css",
+		JsPath:  "simple_app.js",
+		TemplRender: func(d *templates.PageData) templ.Component {
+			return templates.SimpleLayout(d)
+		},
 	},
 }
 
 // loadLayout loads the given layout files into memory
 func (l *Layout) loadLayout() error {
 	l.log.Debug("Loading layout", "name", l.Name)
-
-	// Load and parse the base HTML layout
-	layoutContent, err := assets.TemplateFS.ReadFile(l.HtmlPath)
-	if err != nil {
-		return err
-	}
-	tmplLayout, err := template.New("layout").Funcs(funcMap).Parse(string(layoutContent))
-	if err != nil {
-		return err
-	}
-	l.HtmlTemplate = tmplLayout
 
 	// Load and parse the CSS template
 	cssContent, err := assets.TemplateFS.ReadFile(l.CssPath)
@@ -91,7 +84,7 @@ func (l *Layout) loadLayout() error {
 	}
 	l.JsGraphTemplate = tmplGraphJS
 
-	// Load and parse the graph JS template
+	// Load and parse the canvas JS template
 	jsCanvasTemplate, err := assets.TemplateFS.ReadFile("canvas.js")
 	if err != nil {
 		return err
@@ -127,39 +120,22 @@ func (l *Layout) loadLayout() error {
 	return nil
 }
 
-// Layout func map
-var funcMap = template.FuncMap{
-	"formatDate": func(t time.Time) string {
-		return t.Format("Jan 02, 2006")
-	},
-	"getValue":       GetValue,
-	"safe":           safeHTML,
-	"getDisplayName": GetDisplayName,
-	"dict":           dict,
-}
-
-// safeHTML is used to render an any result into a template.HTML
-func safeHTML(s string) template.HTML {
-	return template.HTML(s)
-}
-
 // Layout contains the paths for the layout
 //
-// Every Layout is made by 3 different files, layout.html, style.css, and app.js.
+// Every Layout is made by 3 different files, style.css, and app.js.
 // If you are creating a new layout create the needed files by prepending the name of the
 // layout to the name of the file. If you have a layout called "default" it should have the
-// following files: default_layout.html, default_style.css and default_app.js
+// following files: default_style.css and default_app.js
 type Layout struct {
 	Name                   string
-	HtmlPath               string                 // Path of the HTML file
-	CssPath                string                 // Path of the CSS file
-	JsPath                 string                 // Path of the JS file
-	HtmlTemplate           *template.Template     // The template
-	CssTemplate            *textTemplate.Template // Used to add the theme variables
-	JsTemplate             *textTemplate.Template // If you need to change some data
-	JsGraphTemplate        *textTemplate.Template // Usually you'll need to update the graph base url
-	JsCanvasTemplate       *textTemplate.Template // If you need to change some data
-	CssGiscusLightTemplate *textTemplate.Template // Giscus template
-	CssGiscusDarkTemplate  *textTemplate.Template // Giscus template
+	CssPath                string                                        // Path of the CSS file
+	JsPath                 string                                        // Path of the JS file
+	TemplRender            func(*templates.PageData) templ.Component     // Templ layout renderer
+	CssTemplate            *textTemplate.Template                        // Used to add the theme variables
+	JsTemplate             *textTemplate.Template                        // If you need to change some data
+	JsGraphTemplate        *textTemplate.Template                        // Usually you'll need to update the graph base url
+	JsCanvasTemplate       *textTemplate.Template                        // If you need to change some data
+	CssGiscusLightTemplate *textTemplate.Template                        // Giscus template
+	CssGiscusDarkTemplate  *textTemplate.Template                        // Giscus template
 	log                    *slog.Logger
 }

@@ -2,6 +2,7 @@
 package builder
 
 import (
+	"context"
 	"encoding/json"
 	"html/template"
 	"log/slog"
@@ -380,7 +381,9 @@ func (s *DefaultSite) RenderFolder(f *obsidian.Folder) error {
 	}
 
 	// Executes the template
-	err = s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)
+	templData := toTemplPageData(&pageData)
+	component := s.Layout.TemplRender(templData)
+	err = component.Render(context.Background(), minifierWriter)
 	if err != nil {
 		return err
 	}
@@ -417,7 +420,9 @@ func (s *DefaultSite) RenderTag(t *obsidian.Tag) error {
 	}
 
 	// Executes the template
-	err = s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)
+	templData := toTemplPageData(&pageData)
+	component := s.Layout.TemplRender(templData)
+	err = component.Render(context.Background(), minifierWriter)
 	if err != nil {
 		return err
 	}
@@ -467,7 +472,9 @@ func (s *DefaultSite) RenderBase(b *PageBase, allFiles []*obsidian.File) error {
 	}
 
 	// Executes the template
-	err = s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)
+	templData := toTemplPageData(&pageData)
+	component := s.Layout.TemplRender(templData)
+	err = component.Render(context.Background(), minifierWriter)
 	if err != nil {
 		return err
 	}
@@ -514,7 +521,9 @@ func (s *DefaultSite) RenderGraph() error {
 			{Label: "Home", Url: "/"}, {Label: "Graph", Url: "/graph"}},
 	}
 
-	s.Layout.HtmlTemplate.Execute(minifiedWriter, data)
+	templData := toTemplPageData(&data)
+	component := s.Layout.TemplRender(templData)
+	component.Render(context.Background(), minifiedWriter)
 	return nil
 }
 
@@ -556,7 +565,9 @@ func (s *DefaultSite) RenderNote(f *obsidian.File) error {
 	}
 
 	// Executes the template
-	err = s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)
+	templData := toTemplPageData(&pageData)
+	component := s.Layout.TemplRender(templData)
+	err = component.Render(context.Background(), minifierWriter)
 	if err != nil {
 		return err
 	}
@@ -663,7 +674,9 @@ func (s *DefaultSite) RenderCanvas(f *obsidian.File) error {
 		IsCanvas:      true,
 	}
 
-	s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)
+	templData := toTemplPageData(&pageData)
+	component := s.Layout.TemplRender(templData)
+	component.Render(context.Background(), minifierWriter)
 
 	return nil
 }

@@ -38,10 +38,8 @@ import "embed"
 //go:embed NotoSerif-Bold.woff2
 //go:embed Roboto-Regular.woff2
 //go:embed Roboto-Bold.woff2
-//go:embed default_layout.html
 //go:embed default_style.css
 //go:embed default_app.js
-//go:embed simple_layout.html
 //go:embed simple_style.css
 //go:embed simple_app.js
 var TemplateFS embed.FS
