@@ -1,0 +1,529 @@
+// @feature:layouts Content-type renderers, base view variants, and sidebar components.
+package templates
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/otaleghani/kiln/internal/obsidian"
+)
+
+// ContentNote renders a markdown note.
+templ ContentNote(data *PageData) {
+	if data.IsNote {
+		<div id="content" class="h-dvh overflow-scroll">
+			<div class="p-4 content">
+				@templ.Raw(data.Content)
+			</div>
+		</div>
+	}
+}
+
+// ContentGraph renders the full-page graph view.
+templ ContentGraph(data *PageData) {
+	if data.IsGraph {
+		<div class="canvas-mode" id="content">
+			@templ.Raw(data.Content)
+		</div>
+	}
+}
+
+// ContentCanvas renders an Obsidian canvas with inline script injecting CanvasJSON.
+templ ContentCanvas(data *PageData) {
+	if data.IsCanvas {
+		<div class="canvas-mode">
+			<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+			<script src={ data.Site.BaseURL + "/canvas.js" }></script>
+			<div id="viewport">
+				<div id="canvas-world">
+					<svg id="edges-layer"></svg>
+				</div>
+			</div>
+			<div id="canvas-controls">
+				<button
+					onclick="window.renderer.zoomOut()"
+					class="canvas-btn icon-minus"
+					aria-label="Zoom Out"
+				></button>
+				<button
+					onclick="window.renderer.resetView()"
+					class="canvas-btn icon-maximize"
+					aria-label="Reset View"
+				></button>
+				<button
+					onclick="window.renderer.zoomIn()"
+					class="canvas-btn icon-plus"
+					aria-label="Zoom In"
+				></button>
+			</div>
+			@canvasInitScript(data.CanvasJSON)
+		</div>
+	}
+}
+
+// canvasInitScript outputs the inline <script> that boots the canvas renderer.
+templ canvasInitScript(canvasJSON string) {
+	<script>
+		(function() {
+			var data = JSON.parse(document.getElementById("canvas-data").textContent);
+			if (window.initCanvasMode) {
+				window.initCanvasMode(data);
+			} else {
+				document.addEventListener('DOMContentLoaded', function() {
+					if (window.initCanvasMode) window.initCanvasMode(data);
+				});
+			}
+		})();
+	</script>
+	<script id="canvas-data" type="application/json">
+		{ canvasJSON }
+	</script>
+}
+
+// ContentFolder renders a folder listing with sub-folders and files.
+templ ContentFolder(data *PageData) {
+	if data.IsFolder && data.Folder != nil {
+		<div class="my-4 w-full font-main text-foreground p-4" id="content">
+			<h1 class="mt-0 mb-6 text-3xl border-b border-sidebar-border pb-2 text-foreground font-semibold">
+				Folder: { data.Folder.Name }
+			</h1>
+			<ul class="list-none p-0 m-0 mb-8 border border-sidebar-border rounded-md bg-background">
+				for _, f := range data.Folder.Folders {
+					<li class="flex justify-between items-center px-4 py-2.5 border-b border-sidebar-border last:border-b-0 transition-colors hover:bg-hover">
+						<div class="flex items-center">
+							<span class="mr-2 opacity-70 text-lg">&#128193;</span>
+							<a
+								href={ templ.SafeURL(f.WebPath) }
+								class="font-semibold text-foreground text-[0.95em] no-underline hover:text-accent hover:underline"
+							>{ f.Name }</a>
+						</div>
+					</li>
+				}
+				for _, f := range data.Folder.Files {
+					<li class="flex justify-between items-center px-4 py-2.5 border-b border-sidebar-border last:border-b-0 transition-colors hover:bg-hover">
+						<div class="flex items-center">
+							<span class="mr-2 opacity-70 text-lg">&#128196;</span>
+							<a
+								href={ templ.SafeURL(f.WebPath) }
+								class="font-medium text-foreground text-[0.95em] no-underline hover:text-accent hover:underline"
+							>{ f.Name }</a>
+						</div>
+						<div class="flex gap-2 text-xs ml-4">
+							<span class="text-foreground/60" title="Last Modified">
+								{ FormatDate(f.Modified) }
+							</span>
+						</div>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
+// ContentTag renders a tag listing with associated files.
+templ ContentTag(data *PageData) {
+	if data.IsTag && data.Tag != nil {
+		<div class="my-4 w-full font-main text-foreground p-4" id="content">
+			<h1 class="mt-0 mb-6 text-3xl border-b border-sidebar-border pb-2 text-foreground font-semibold">
+				Tag: { data.Tag.Name }
+			</h1>
+			<ul class="list-none p-0 m-0 mb-8 border border-sidebar-border rounded-md bg-background">
+				for _, f := range data.Tag.Files {
+					<li class="flex justify-between items-center px-4 py-2.5 border-b border-sidebar-border last:border-b-0 transition-colors hover:bg-hover">
+						<div class="flex items-center">
+							<span class="mr-2 opacity-70 text-lg">&#128196;</span>
+							<a
+								href={ templ.SafeURL(f.WebPath) }
+								class="font-medium text-foreground text-[0.95em] no-underline hover:text-accent hover:underline"
+							>{ f.Name }</a>
+						</div>
+						<div class="flex gap-2 text-xs ml-4">
+							<span class="text-foreground/60" title="Last Modified">
+								{ FormatDate(f.Modified) }
+							</span>
+						</div>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
+// ContentBase dispatches to the appropriate base view (table/cards/list) by ViewType.
+templ ContentBase(data *PageData) {
+	if data.IsBase {
+		<div id="content">
+			if data.Base.ViewType == "table" {
+				@BaseTable(data)
+			}
+			if data.Base.ViewType == "cards" {
+				@BaseCards(data)
+			}
+			if data.Base.ViewType == "list" {
+				@BaseList(data)
+			}
+		</div>
+	}
+}
+
+// BaseTable renders a database-style table view.
+templ BaseTable(data *PageData) {
+	<div class="w-full font-main text-foreground">
+		<div class="overflow-x-auto border-b border-b-sidebar-border bg-background mb-4">
+			<table class="w-full border-collapse border-spacing-0 text-sm">
+				<thead>
+					<tr class="w-full">
+						for _, col := range data.Base.Columns {
+							<th class="bg-sidebar text-foreground font-semibold text-left px-3 py-2.5 border-b border-r border-sidebar-border whitespace-nowrap last:border-r-0">
+								if data.Base.DisplayNameFn != nil {
+									{ data.Base.DisplayNameFn(col) }
+								} else {
+									{ col }
+								}
+							</th>
+						}
+					</tr>
+				</thead>
+				<tbody class="w-full">
+					if len(data.Base.Groups) > 0 {
+						for _, group := range data.Base.Groups {
+							<tr class="group-row">
+								<td
+									colspan={ strconv.Itoa(len(data.Base.Columns)) }
+									class="bg-sidebar text-foreground font-bold text-[0.95em] px-3 py-2 text-left border-b border-sidebar-border"
+								>
+									{ group.Key }
+									<span class="font-normal opacity-70 text-sm ml-1">
+										{ fmt.Sprintf("(%d)", len(group.Notes)) }
+									</span>
+								</td>
+							</tr>
+							for _, note := range group.Notes {
+								@tableRow(data, note)
+							}
+						}
+					} else {
+						for _, note := range data.Base.Notes {
+							@tableRow(data, note)
+						}
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+// BaseCards renders a card grid view.
+templ BaseCards(data *PageData) {
+	<div class="my-4 w-full font-main text-foreground p-4 overflow-y-auto">
+		if len(data.Base.Groups) > 0 {
+			for _, group := range data.Base.Groups {
+				<div class="mb-6">
+					<h3 class="mb-3 font-bold text-lg border-b border-sidebar-border pb-1">
+						{ group.Key }
+						<span class="font-normal opacity-70 text-sm ml-1">
+							{ fmt.Sprintf("(%d)", len(group.Notes)) }
+						</span>
+					</h3>
+					<div
+						class="grid gap-4 mb-8"
+						style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));"
+					>
+						for _, note := range group.Notes {
+							@cardItem(data, note)
+						}
+					</div>
+				</div>
+			}
+		} else {
+			<div
+				class="grid gap-4 mb-8"
+				style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));"
+			>
+				for _, note := range data.Base.Notes {
+					@cardItem(data, note)
+				}
+			</div>
+		}
+	</div>
+}
+
+// BaseList renders a list view.
+templ BaseList(data *PageData) {
+	<div class="p-4 w-full font-main text-foreground">
+		if len(data.Base.Groups) > 0 {
+			for _, group := range data.Base.Groups {
+				<div class="mb-6">
+					<h3 class="mb-3 font-bold text-lg border-b border-sidebar-border pb-1">
+						{ group.Key }
+						<span class="font-normal opacity-70 text-sm ml-1">
+							{ fmt.Sprintf("(%d)", len(group.Notes)) }
+						</span>
+					</h3>
+					<ul class="list-none p-0 m-0 mb-8 border border-sidebar-border rounded-md bg-background">
+						for _, note := range group.Notes {
+							@listItem(data, note)
+						}
+					</ul>
+				</div>
+			}
+		} else {
+			<ul class="list-none p-0 m-0 mb-8 border border-sidebar-border rounded-md bg-background">
+				for _, note := range data.Base.Notes {
+					@listItem(data, note)
+				}
+			</ul>
+		}
+	</div>
+}
+
+// LocalGraph renders the local graph expand button and container for the default layout sidebar.
+templ LocalGraph(disabled bool) {
+	if !disabled {
+		<div id="local-graph-wrapper">
+			<header class="flex justify-between items-center py-2">
+				<span class="font-bold">Local Graph</span>
+				<div>
+					<button
+						class="cursor-pointer p-1 rounded hover:bg-hover transition-colors"
+						onclick="window.toggleGraphExpand()"
+						title="Expand"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="w-5 h-5"
+						>
+							<path d="M15 3h6v6"></path>
+							<path d="m21 3-7 7"></path>
+							<path d="m3 21 7-7"></path>
+							<path d="M9 21H3v-6"></path>
+						</svg>
+					</button>
+				</div>
+			</header>
+			<div
+				id="local-graph-container"
+				class="rounded border border-sidebar-border aspect-square"
+			></div>
+		</div>
+	}
+}
+
+// TOCPanel renders the "On this page" table of contents for the default layout sidebar.
+templ TOCPanel(data *PageData) {
+	if !data.Site.DisableTOC {
+		<div id="toc-container" hx-swap-oob="true">
+			if data.TOC != "" {
+				<header class="flex justify-between items-center py-2 border-b border-sidebar-border mb-4">
+					<span class="font-bold">On this page</span>
+				</header>
+				<div>
+					@templ.Raw(data.TOC)
+				</div>
+			}
+		</div>
+	}
+}
+
+// SimpleTOCButton renders the TOC icon button for the simple layout header.
+templ SimpleTOCButton() {
+	<div>
+		<button
+			id="toc-button"
+			aria-label="Toggle table of contents"
+			title="Table of contents"
+			class="cursor-pointer p-1 rounded hover:bg-hover transition-colors"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="24"
+				height="24"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="h-5 w-5 text-foreground"
+				id="toc-icon"
+			>
+				<path d="M16 5H3"></path>
+				<path d="M16 12H3"></path>
+				<path d="M16 19H3"></path>
+				<path d="M21 5h.01"></path>
+				<path d="M21 12h.01"></path>
+				<path d="M21 19h.01"></path>
+			</svg>
+		</button>
+	</div>
+}
+
+// SimpleLocalGraphButton renders the local graph icon button for the simple layout header.
+templ SimpleLocalGraphButton() {
+	<div>
+		<button
+			id="local-graph-button"
+			aria-label="Toggle local graph"
+			title="Local graph"
+			class="cursor-pointer p-1 rounded hover:bg-hover transition-colors"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="24"
+				height="24"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="w-5 h-5 text-foreground"
+				id="local-graph-icon"
+			>
+				<circle cx="12" cy="4.5" r="2.5"></circle>
+				<path d="m10.2 6.3-3.9 3.9"></path>
+				<circle cx="4.5" cy="12" r="2.5"></circle>
+				<path d="M7 12h10"></path>
+				<circle cx="19.5" cy="12" r="2.5"></circle>
+				<path d="m13.8 17.7 3.9-3.9"></path>
+				<circle cx="12" cy="19.5" r="2.5"></circle>
+			</svg>
+		</button>
+	</div>
+}
+
+// SimpleTOCContainer renders the overlay modal for the TOC in the simple layout.
+templ SimpleTOCContainer(data *PageData) {
+	<div
+		class="fixed inset-0 z-40 bg-background pb-4 hidden overflow-scroll p-4 md:p-0"
+		id="toc-wrapper"
+	>
+		<div class="max-w-prose mx-auto w-full rounded-xl border border-sidebar-border p-6 mt-20 md:mt-24">
+			if !data.Site.DisableTOC {
+				<div id="toc-container">
+					if data.TOC != "" {
+						<header class="flex justify-between items-center py-2 border-b border-sidebar-border mb-4">
+							<span class="font-bold">Table of contents</span>
+						</header>
+						<div>
+							@templ.Raw(data.TOC)
+						</div>
+						<script>
+							if (document.getElementById("toc-container")) {
+								const links = document.getElementById("toc-container").querySelectorAll("a");
+								links.forEach((link) => {
+									link.addEventListener("click", function() {
+										window.toggleTOC();
+									});
+								});
+							}
+						</script>
+					}
+				</div>
+			}
+		</div>
+	</div>
+}
+
+// SimpleLocalGraphContainer renders the overlay modal for the local graph in the simple layout.
+templ SimpleLocalGraphContainer() {
+	<div
+		class="fixed inset-0 z-40 bg-background pb-4 hidden overflow-scroll p-4 md:p-0"
+		id="local-graph-wrapper"
+	>
+		<div class="max-w-prose mx-auto w-full rounded-xl border border-sidebar-border p-6 mt-20 md:mt-24">
+			<div id="local-graph-container"></div>
+		</div>
+	</div>
+}
+
+// tableRow renders a single row in the base table view.
+templ tableRow(data *PageData, note *obsidian.File) {
+	<tr class="hover:bg-hover transition-colors">
+		for _, col := range data.Base.Columns {
+			<td class="px-3 py-2 border-b border-r border-sidebar-border align-top leading-snug last:border-r-0 empty:bg-foreground/5">
+				if col == "file.name" {
+					<a
+						href={ templ.SafeURL(note.WebPath) }
+						class="text-accent font-medium no-underline hover:underline"
+					>{ note.Name }</a>
+				} else {
+					if data.Base.ValueFn != nil {
+						if val := data.Base.ValueFn(note, col); val != "" {
+							<div class="[&_ul]:pl-5">
+								@templ.Raw(val)
+							</div>
+						}
+					}
+				}
+			</td>
+		}
+	</tr>
+}
+
+// cardItem renders a single card in the base cards view.
+templ cardItem(data *PageData, note *obsidian.File) {
+	<div class="bg-background border border-sidebar-border rounded-lg p-4 shadow-sm flex flex-col transition-all duration-100 ease-in-out hover:-translate-y-0.5 hover:shadow-md hover:border-accent">
+		<div class="text-lg font-bold mb-3 border-b border-sidebar-border pb-2">
+			<a
+				href={ templ.SafeURL(note.WebPath) }
+				class="text-foreground no-underline hover:text-accent hover:underline"
+			>{ note.Name }</a>
+		</div>
+		<div class="flex flex-col gap-1.5">
+			for _, col := range data.Base.Columns {
+				if col != "file.name" {
+					<div class="flex justify-between text-sm leading-snug">
+						<span class="text-foreground/60 font-medium mr-2.5 shrink-0">
+							{ col }:
+						</span>
+						<span class="text-foreground text-right break-words">
+							if data.Base.ValueFn != nil {
+								if val := data.Base.ValueFn(note, col); val != "" {
+									@templ.Raw(val)
+								} else {
+									<span class="text-sidebar-border">-</span>
+								}
+							} else {
+								<span class="text-sidebar-border">-</span>
+							}
+						</span>
+					</div>
+				}
+			}
+		</div>
+	</div>
+}
+
+// listItem renders a single item in the base list view.
+templ listItem(data *PageData, note *obsidian.File) {
+	<li class="flex justify-between items-center px-4 py-2.5 border-b border-sidebar-border last:border-b-0 transition-colors hover:bg-hover overflow-x-auto">
+		<div class="flex-1">
+			<a
+				href={ templ.SafeURL(note.WebPath) }
+				class="font-medium text-foreground text-[0.95em] no-underline hover:text-accent hover:underline"
+			>{ note.Name }</a>
+		</div>
+		<div class="flex gap-2 text-xs ml-4 items-start">
+			for _, col := range data.Base.Columns {
+				if col != "file.name" {
+					if data.Base.ValueFn != nil {
+						if val := data.Base.ValueFn(note, col); val != "" {
+							<span class="text-nowrap bg-sidebar border border-sidebar-border rounded px-1.5 py-0.5 text-foreground/80 max-w-[150px] truncate">
+								@templ.Raw(val)
+							</span>
+						}
+					}
+				}
+			}
+		</div>
+	</li>
+}
