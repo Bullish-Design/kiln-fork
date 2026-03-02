@@ -1,0 +1,103 @@
+-- DwightAuto decomposition output
+-- Request: Change the rendering engine from template/html to templ. Maintain the style and the other dependencies like tailwindcss. Create a new module inside for this.
+-- Timestamp: Mon 02 Mar 2026 01:41:13 PM CET
+
+I'll finish the decomposition concisely. Here's the complete task list from the beginning:
+
+<tasks>
+<task order="1" title="Install templ and create module scaffolding">
+Install templ dependency and CLI, create `internal/templates/` package with shared types and helpers.
+
+1. Run: `cd /home/oliviero/Workspace/kiln && go get github.com/a-h/templ`
+2. Run: `go install github.com/a-h/templ/cmd/templ@latest`
+3. Create `internal/templates/types.go` — `// @feature:layouts` on line 1. Package `templates`. Define:
+   - `PageData` struct (Site *SiteData, Content/TOC/CanvasJSON string, Breadcrumbs []obsidian.Breadcrumb, File *obsidian.File, Folder *obsidian.Folder, Tag *obsidian.Tag, IsGraph/IsCanvas/IsBase/IsNote/IsFolder/IsTag bool, Frontmatter map[string]any, Base BaseViewData)
+   - `SiteData` struct (BaseURL/SiteName string, Theme *ThemeData, NavbarRoot *obsidian.NavbarNode, DisableLocalGraph/DisableTOC/FlatURLs bool)
+   - `ThemeData` struct (Light/Dark *ThemeColors, FontFamily/FontFaceCSS string)
+   - `ThemeColors` struct (Bg/Text/SidebarBg/SidebarBorder/Accent/Hover/Comment/Red/Orange/Yellow/Green/Blue/Purple/Cyan string)
+   - `BaseViewData` struct (Groups []*bases.FileGroup, Notes []*obsidian.File, Columns []string, ViewType string, DisplayNameFn func(string)string, ValueFn func(*obsidian.File,string)string)
+4. Create `internal/templates/helpers.go` — `// @feature:layouts` on line 1. `FormatDate(t time.Time) string` returns `t.Format("Jan 02, 2006")`.
+
+**Verify:** `cd /home/oliviero/Workspace/kiln && go build ./internal/templates/...`
+</task>
+
+<task order="2" title="Create shared and navbar templ components" depends_on="1">
+Create reusable templ components: theme toggler, sidebar toggles, breadcrumbs, head/canonical, theme CSS style block, and recursive navbar. Copy exact HTML/CSS classes from `assets/default_layout.html` and `assets/simple_layout.html`.
+
+Create `internal/templates/shared.templ` — `// @feature:layouts` on line 1:
+- `templ ThemeToggler()` — sun/moon button (default_layout.html:337-384)
+- `templ LeftSidebarToggle()` — panel icon button (default_layout.html:291-312)
+- `templ RightSidebarToggle()` — right panel button (default_layout.html:314-335)
+- `templ GraphButton(baseURL string)` — globe link (default_layout.html:386-408)
+- `templ Breadcrumbs(crumbs []obsidian.Breadcrumb)` — default layout breadcrumbs (lines 410-423)
+- `templ SimpleBreadcrumbs(crumbs []obsidian.Breadcrumb, siteName string)` — simple variant (simple_layout.html:443-471)
+- `templ PageName(data *PageData)` — hidden data-title div (lines 427-437)
+- `templ Canonical(data *PageData)` — `<link rel="canonical">` (lines 937-957)
+- `templ Head(data *PageData)` — title + meta tags (lines 902-935)
+- `templ ThemeStyle(theme *ThemeData)` — inline `<style>` with CSS vars for light/dark and @font-face (lines 29-96)
+
+Create `internal/templates/navbar.templ` — `// @feature:layouts` on line 1:
+- `templ Navbar(nodes []*obsidian.NavbarNode, flatURLs bool)` — recursive. Folders get `<details>` with chevron SVG, recursive call. Non-folders get `<a>`. Badge spans for Canvas/Base/Note. (default_layout.html:213-289)
+
+**Verify:** `cd /home/oliviero/Workspace/kiln && templ generate ./internal/templates/ && go build ./internal/templates/...`
+</task>
+
+<task order="3" title="Create content and base view templ components" depends_on="2">
+Create content-type renderers and base view variants (table/cards/list), plus sidebar components (local graph, TOC).
+
+Create `internal/templates/content.templ` — `// @feature:layouts` on line 1:
+- `templ ContentNote(data *PageData)` — `@templ.Raw(data.Content)` (default_layout.html:488-496)
+- `templ ContentGraph(data *PageData)` — graph div (lines 498-504)
+- `templ ContentCanvas(data *PageData)` — canvas with inline script injecting CanvasJSON (lines 441-484)
+- `templ ContentFolder(data *PageData)` — folder listing with FormatDate (lines 811-863)
+- `templ ContentTag(data *PageData)` — tag listing with FormatDate (lines 865-900)
+- `templ ContentBase(data *PageData)` — dispatches to table/cards/list by ViewType (lines 566-580)
+- `templ BaseTable(data *PageData)` — uses DisplayNameFn/ValueFn with templ.Raw (lines 582-673)
+- `templ BaseCards(data *PageData)` — card grid (lines 675-745)
+- `templ BaseList(data *PageData)` — list view (lines 747-809)
+- `templ LocalGraph(disabled bool)` — expand button + container (lines 508-545)
+- `templ TOCPanel(data *PageData)` — "On this page" with templ.Raw(data.TOC) (lines 549-562)
+- `templ SimpleTOCButton()` / `templ SimpleLocalGraphButton()` — icon buttons from simple_layout.html
+- `templ SimpleTOCContainer(data *PageData)` / `templ SimpleLocalGraphContainer()` — overlay modals from simple_layout.html
+
+**Verify:** `cd /home/oliviero/Workspace/kiln && templ generate ./internal/templates/ && go build ./internal/templates/...`
+</task>
+
+<task order="4" title="Create full-page layout components" depends_on="3">
+Create the two top-level page components assembling all shared components into complete HTML documents.
+
+Create `internal/templates/layout_default.templ` — `// @feature:layouts` on line 1:
+- `templ DefaultLayout(data *PageData)` — Full `<html>` doc from default_layout.html:1-211. Head: Canonical, theme-init script, meta, Head, stylesheets, ThemeStyle, scripts. Body: left nav (ThemeToggler, search, Navbar, footer), main (PageName, header with toggles/Breadcrumbs, all Content* components), right aside (conditional, LocalGraph + TOCPanel).
+
+Create `internal/templates/layout_simple.templ` — `// @feature:layouts` on line 1:
+- `templ SimpleLayout(data *PageData)` — Full `<html>` doc from simple_layout.html:1-199. Fixed top header (site name, SimpleBreadcrumbs, action buttons), main content, overlay containers for TOC/graph. No persistent sidebars.
+
+**Verify:** `cd /home/oliviero/Workspace/kiln && templ generate ./internal/templates/ && go build ./internal/templates/...`
+</task>
+
+<task order="5" title="Wire templ into builder rendering pipeline" depends_on="4">
+Integrate templ components into the builder. Create an adapter to convert builder types to template types, and update render methods to use templ.
+
+1. Create `internal/builder/templ_adapter.go` — `// @feature:builder` on line 1. Functions:
+   - `toTemplPageData(p *DefaultSitePageData) *templates.PageData` — maps all fields. Content: `string(p.Content)`, TOC: `string(p.TOC)`, CanvasJSON: `string(p.CanvasContent)`. For Base: set ViewType from `p.Base.File.Views[0].Type`, DisplayNameFn wrapping `GetDisplayName`, ValueFn wrapping `GetValue`.
+   - `toTemplTheme(t *Theme) *templates.ThemeData` — maps Light/Dark ThemeColors and Font fields.
+
+2. Edit `internal/builder/layouts.go`:
+   - Add to Layout struct: `TemplRender func(*templates.PageData) templ.Component`
+   - In `layouts` map, set for "default": `TemplRender: func(d *templates.PageData) templ.Component { return templates.DefaultLayout(d) }`, for "simple": `TemplRender: func(d *templates.PageData) templ.Component { return templates.SimpleLayout(d) }`
+
+3. Edit `internal/builder/builder_default.go` — in each render method (RenderNote, RenderFolder, RenderTag, RenderBase, RenderCanvas, RenderGraph), replace `s.Layout.HtmlTemplate.Execute(minifierWriter, pageData)` with:
+   ```go
+   templData := toTemplPageData(&pageData)
+   component := s.Layout.TemplRender(templData)
+   err = component.Render(context.Background(), minifierWriter)
+   ```
+   Add `"context"` import. Remove the old `HtmlTemplate.Execute` calls. The `loadLayout()` method no longer needs to parse HTML templates — remove that section (keep CSS/JS text/template parsing).
+
+4. Remove from `layouts.go`: `HtmlPath` field, `HtmlTemplate` field, HTML parsing in `loadLayout()` (lines 51-58), `funcMap` var (lines 131-139), `safeHTML` func (lines 142-144). Keep `dict` function only if still needed by CSS/JS text/templates — check and remove if unused.
+
+5. Remove the HTML layout files from embed: edit `assets/assets.go` to remove `//go:embed default_layout.html` and `//go:embed simple_layout.html`. Delete `assets/default_layout.html`, `assets/simple_layout.html`, and `assets/old_layout.html`.
+
+**Verify:** `cd /home/oliviero/Workspace/kiln && templ generate ./internal/templates/ && go build ./... && go test ./...`
+</task>
+</tasks>
