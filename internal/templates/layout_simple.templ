@@ -59,6 +59,7 @@ templ SimpleLayout(data *PageData) {
 				@ContentBase(data)
 				@ContentFolder(data)
 				@ContentTag(data)
+				@Content404(data)
 			</main>
 			@SimpleMenu(data)
 			if !data.Site.DisableTOC {

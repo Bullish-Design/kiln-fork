@@ -22,6 +22,7 @@ type PageData struct {
 	IsNote      bool
 	IsFolder    bool
 	IsTag       bool
+	Is404       bool
 	Frontmatter map[string]any
 	Base        BaseViewData
 }

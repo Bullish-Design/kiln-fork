@@ -337,6 +337,11 @@ func buildDefault(log *slog.Logger) {
 		log.Error("Couldn't render 'graph.html'", "error", err)
 	}
 
+	err = site.Render404()
+	if err != nil {
+		log.Error("Couldn't render '404.html'", "error", err)
+	}
+
 	err = site.Obsidian.GenerateSitemap()
 	if err != nil {
 		log.Error("Couldn't render 'sitemap.xml'", "error", err)
@@ -550,6 +555,33 @@ func (s *DefaultSite) RenderGraph() error {
 	return nil
 }
 
+// Render404 generates a custom 404.html page at the root of the output directory.
+func (s *DefaultSite) Render404() error {
+	outPath := filepath.Join(OutputDir, "404.html")
+	f404, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	defer f404.Close()
+
+	minifiedWriter := s.Minifier.Writer("text/html", f404)
+	defer minifiedWriter.Close()
+
+	data := DefaultSitePageData{
+		Site:        s,
+		Is404:       true,
+		Frontmatter: make(map[string]any),
+		Breadcrumbs: []obsidian.Breadcrumb{
+			{Label: "Home", Url: "/"},
+			{Label: "404", Url: "#"},
+		},
+	}
+
+	templData := toTemplPageData(&data)
+	component := s.Layout.TemplRender(templData)
+	return component.Render(context.Background(), minifiedWriter)
+}
+
 // RenderNote renders the given markdown file
 func (s *DefaultSite) RenderNote(f *obsidian.File) error {
 	obsidian.SetNavbarNodeActive(s.NavbarRoot.Children, f.WebPath)
@@ -748,6 +780,7 @@ type DefaultSitePageData struct {
 	IsNote        bool                  // Is the page a note page?
 	IsFolder      bool                  // Is the page a folder page?
 	IsTag         bool                  // Is the page a tag page?
+	Is404         bool                  // Is the page a 404 page?
 	Frontmatter   map[string]any        // Frontmatter data
 	Base          BaseData
 }
