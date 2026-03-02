@@ -78,6 +78,24 @@ templ canvasInitScript(canvasJSON string) {
 	</script>
 }
 
+// Content404 renders the 404 not found page.
+templ Content404(data *PageData) {
+	if data.Is404 {
+		<div id="content" class="h-dvh overflow-y-auto overflow-x-hidden">
+			<div class="p-4 content flex flex-col items-center justify-center min-h-[60vh]">
+				<h1 class="text-6xl font-bold text-foreground mb-4">404</h1>
+				<p class="text-xl text-foreground/70 mb-8">Page not found</p>
+				<a
+					href={ templ.SafeURL(data.Site.BaseURL + "/") }
+					class="text-accent hover:underline"
+				>
+					Go back home
+				</a>
+			</div>
+		</div>
+	}
+}
+
 // ContentFolder renders a folder listing with sub-folders and files.
 templ ContentFolder(data *PageData) {
 	if data.IsFolder && data.Folder != nil {

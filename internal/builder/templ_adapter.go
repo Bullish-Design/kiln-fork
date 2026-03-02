@@ -24,6 +24,7 @@ func toTemplPageData(p *DefaultSitePageData) *templates.PageData {
 		IsNote:      p.IsNote,
 		IsFolder:    p.IsFolder,
 		IsTag:       p.IsTag,
+		Is404:       p.Is404,
 		Frontmatter: p.Frontmatter,
 		Site: &templates.SiteData{
 			BaseURL:           p.Site.BaseURL,

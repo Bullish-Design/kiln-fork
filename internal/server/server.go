@@ -33,6 +33,8 @@ func Serve(port, outputDir, baseURL string, log *slog.Logger) {
 	// Setup the standard file server
 	fileServer := http.FileServer(http.Dir(outputDir))
 
+	notFoundPage := filepath.Join(outputDir, "404.html")
+
 	// Create custom request handler
 	// It handles clean URLs, trailing slashes, and fallback lookups
 	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,8 +74,13 @@ func Serve(port, outputDir, baseURL string, log *slog.Logger) {
 			}
 		}
 
-		// Use the standard file server (handles assets, existing files, 404s).
-		fileServer.ServeHTTP(w, r)
+		// Use the standard file server, but intercept 404 responses to serve
+		// the custom 404.html page instead of Go's default plain text 404.
+		recorder := &notFoundRecorder{ResponseWriter: w}
+		fileServer.ServeHTTP(recorder, r)
+		if recorder.status == http.StatusNotFound {
+			serve404(w, notFoundPage)
+		}
 	})
 
 	// Mount the handler
@@ -88,7 +95,7 @@ func Serve(port, outputDir, baseURL string, log *slog.Logger) {
 			if r.URL.Path == "/" {
 				http.Redirect(w, r, pathPrefix+"/", http.StatusFound)
 			} else {
-				http.NotFound(w, r)
+				serve404(w, notFoundPage)
 			}
 		})
 		log.Info("Serving...", "port", port, "path", pathPrefix)
@@ -103,4 +110,40 @@ func Serve(port, outputDir, baseURL string, log *slog.Logger) {
 		log.Error("Server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// serve404 writes the custom 404.html page if it exists, otherwise falls back
+// to the standard Go 404 response.
+func serve404(w http.ResponseWriter, notFoundPage string) {
+	content, err := os.ReadFile(notFoundPage)
+	if err != nil {
+		http.Error(w, "404 page not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	w.Write(content)
+}
+
+// notFoundRecorder wraps an http.ResponseWriter to intercept 404 responses from
+// the standard file server. When a 404 is detected, it suppresses the default
+// response body so the caller can serve a custom 404 page instead.
+type notFoundRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *notFoundRecorder) WriteHeader(code int) {
+	r.status = code
+	if code == http.StatusNotFound {
+		return
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *notFoundRecorder) Write(b []byte) (int, error) {
+	if r.status == http.StatusNotFound {
+		return len(b), nil
+	}
+	return r.ResponseWriter.Write(b)
 }
