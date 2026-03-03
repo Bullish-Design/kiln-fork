@@ -13,6 +13,7 @@ import (
 
 	"github.com/otaleghani/kiln/assets"
 	"github.com/otaleghani/kiln/internal/obsidian"
+	"github.com/otaleghani/kiln/internal/search"
 	"github.com/otaleghani/kiln/internal/obsidian/bases"
 	"github.com/otaleghani/kiln/internal/obsidian/markdown"
 	"github.com/tdewolff/minify/v2"
@@ -227,6 +228,13 @@ func buildDefault(log *slog.Logger) {
 			Val:   1,
 			Type:  "tag",
 		})
+	}
+
+	log.Info("Generating search index...")
+	searchEntries := search.BuildIndex(notePages)
+	err = search.WriteIndex(searchEntries, OutputDir)
+	if err != nil {
+		log.Error("Couldn't generate search index", "error", err)
 	}
 
 	log.Info("Rendering static files...")
