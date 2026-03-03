@@ -1,148 +1,182 @@
 -- DwightAuto decomposition output
--- Request: ### Full-Text Search (Client-Side)
-Build a search index at build time (JSON or a lightweight format like Pagefind / Lunr-compatible) and ship a small client-side search UI. The default layout already 
--- Timestamp: Tue 03 Mar 2026 02:31:08 PM CET
+-- Request: The new search script works, but the display is not good: it hovers over the navbar and is illegible. We should rework it and make it like a hover panel. Maybe add a simple button for the search featu
+-- Timestamp: Tue 03 Mar 2026 02:56:47 PM CET
 
-
-
-I have all the context I need from my earlier exploration. Let me finish the decomposition concisely.
+Now I have the full picture. Let me formulate the decomposition.
 
 <tasks>
-<task order="1" title="Build search index generator">
-Create `internal/search/search.go` and `internal/search/search_test.go`. Add `// @feature:search` pragma on line 1 of both files.
+<task order="1" title="Rework search.js to modal overlay pattern">
+Rewrite `assets/search.js` to display search results in a centered modal overlay instead of a dropdown that hovers over the navbar.
 
-**Types in `search.go`:**
-```go
-type SearchEntry struct {
-    Title   string   `json:"title"`
-    URL     string   `json:"url"`
-    Content string   `json:"content"`
-    Tags    []string `json:"tags,omitempty"`
-    Folder  string   `json:"folder,omitempty"`
-}
-```
+**Current problem:** The search JS creates a `#search-results` dropdown positioned absolutely inside the sidebar search input's parent, which causes it to overlap the navbar and be illegible.
 
-**Functions:**
-1. `func BuildIndex(files []*obsidian.File) []SearchEntry` — For each file, create a SearchEntry using `file.Name` as Title, `file.WebPath` as URL, `stripMarkdown(file.Content)` truncated to 500 chars as Content, keys of `file.Tags` (type `map[string]struct{}`) as Tags, `file.Folder` as Folder.
-2. `func stripMarkdown(source []byte) string` — Strip headings (`# `), bold/italic (`*`,`_`), links `[text](url)` → text, wikilinks `[[target|alias]]` → alias, images, code blocks, HTML tags, collapse whitespace.
-3. `func WriteIndex(entries []SearchEntry, outputDir string) error` — Marshal to JSON, write to `filepath.Join(outputDir, "search-index.json")`.
+**Changes to `assets/search.js`:**
+1. Remove the `getOrCreateDropdown(input)` function that creates an absolutely-positioned dropdown inside the input's parent.
+2. Replace it with a modal-based approach. The search UI should be a fixed overlay (`#search-overlay`) centered on the page with a backdrop, similar to how the graph expand works in the existing codebase (see `.expanded` pattern in `assets/default_style_input.css`).
+3. The overlay modal should contain:
+   - A search input at the top (separate from the sidebar input)
+   - A scrollable results list below it
+   - Close on Escape key or clicking the backdrop
+4. Replace `showResults(input, results, query)` to render results inside the modal panel instead of the old dropdown.
+5. Replace `hideDropdown()` with a function that hides the modal overlay.
+6. The `window.initFullSearch` function should:
+   - Still fetch and build the inverted index on init
+   - Create the modal overlay DOM structure once (a fixed backdrop + centered panel with an input + results container)
+   - Listen for input events on the modal's own search input
+   - Keep keyboard navigation (ArrowUp/ArrowDown/Enter/Escape) working
+   - Remove the old `#navbar-search` input listener for full-text results (the sidebar input should only do sidebar filtering, handled by `initNavbarSearch` in `default_app.js`)
+7. Export a `window.openSearchModal()` function that shows the overlay and focuses the modal input. This will be called from a sidebar button (added in next task).
+8. Keep the `@feature:search` pragma on line 1.
+9. Keep the `BASE_URL` template variable `"{{.BaseURL}}"` on line 3.
+10. Keep `searchEntries()`, `snippet()`, `buildInvertedIndex()`, `fetchIndex()` functions unchanged.
 
-Import `github.com/otaleghani/kiln/internal/obsidian` for `obsidian.File`. The File struct has fields: `Name string`, `WebPath string`, `Folder string`, `Content []byte`, `Tags map[string]struct{}`.
+**Also update `assets/shared.css`:**
+Replace the existing search CSS block (lines 825-851, the `.search-results-dropdown` section and `.search-result-*` classes) with new styles for:
+- `#search-overlay`: fixed inset-0, z-index 9999, flex centered, backdrop with `background: rgba(0,0,0,0.6)` and `backdrop-filter: blur(2px)`
+- `#search-modal`: background `var(--bg-color)`, max-width 600px, width 90vw, max-height 70vh, border-radius 0.5rem, border `2px solid var(--accent-color)`, box-shadow, flex column, overflow hidden
+- `#search-modal-input`: full-width input styled like the existing sidebar input (padding 0.75rem 1rem, font-size 1rem, border-bottom only, background transparent, color `var(--text-color)`)
+- `#search-modal-results`: flex-1, overflow-y auto (scrollable results container)
+- `.search-result-item`: display block, padding 0.75rem 1rem, text-decoration none, color `var(--text-color)`, border-bottom `1px solid var(--sidebar-border)`, cursor pointer
+- `.search-result-item:hover`, `.search-result-item.highlighted`: background `var(--hover-color)`
+- `.search-result-title`: font-weight 600
+- `.search-result-folder`: color `var(--accent-color)`, font-size 0.75rem
+- `.search-result-snippet`: color `var(--color-comment, #888)`, font-size 0.75rem, margin-top 0.125rem
+- `#search-overlay.hidden`: display none
 
-**Tests (write first):**
-- `TestStripMarkdown` — headings, bold, links, wikilinks, code blocks → clean text
-- `TestBuildIndex` — create `[]*obsidian.File`, verify SearchEntry fields
-- `TestBuildIndex_EmptyContent` — empty Content bytes
-- `TestWriteIndex` — use `t.TempDir()`, write, read back, verify JSON
-
-**Verify:** `go test ./internal/search/...`
+Verify: `go build ./...` should pass (this only touches JS/CSS assets, not Go code). Manually check the JS has no syntax errors by reviewing the file.
 </task>
 
-<task order="2" title="Wire index generation into build pipeline">
-Edit `internal/builder/builder_default.go` to call the search index generator.
+<task order="2" title="Add search button to default layout sidebar" depends_on="1">
+Add a search button to the left sidebar in the default layout template that opens the search modal created in task 1.
 
-**Existing context:** The `buildDefault` function processes files sequentially. After the tag rendering loop (ends around line 230, before "Rendering static files..." at line 232), insert:
-```go
-log.Info("Generating search index...")
-searchEntries := search.BuildIndex(notePages)
-err = search.WriteIndex(searchEntries, OutputDir)
-if err != nil {
-    log.Error("Couldn't generate search index", "error", err)
-}
+**Edit `internal/templates/layout_default.templ`:**
+1. In the left sidebar's `<div class="p-6 flex-1 overflow-y-auto flex flex-col gap-2">` section (around line 64), replace the existing search input block:
+```
+<div class="relative">
+    <input type="text" id="navbar-search" placeholder="Search notes..." class="w-full p-2 rounded border border-sidebar-border text-sm"/>
+</div>
+```
+with a search button that calls `window.openSearchModal()`:
+```
+<button
+    id="search-button"
+    onclick="if(window.openSearchModal)window.openSearchModal()"
+    class="w-full p-2 rounded border border-sidebar-border text-sm text-left cursor-pointer bg-transparent hover:bg-hover transition-colors flex items-center gap-2"
+>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+    <span class="opacity-60">Search notes...</span>
+</button>
 ```
 
-Add import `"github.com/otaleghani/kiln/internal/search"`. The variable `notePages` is `[]*obsidian.File` already populated earlier. `OutputDir` is a package-level var.
+2. Keep the `@feature:layouts` pragma on line 1.
 
-**Verify:** `go build ./... && go test ./...`
-</task>
-
-<task order="3" title="Create client-side search JS and embed it">
-**Create `assets/search.js`** with `// @feature:search` on line 1. Uses `{{.BaseURL}}` template syntax (same as `default_app.js`).
-
-Implement `window.initFullSearch()`:
-1. Lazy-fetch `{{.BaseURL}}/search-index.json`, cache in `window._searchIndex`.
-2. Build in-memory inverted index: split each entry's title+content into lowercase words, map word→Set of entry indices.
-3. Listen on `#navbar-search` input events. For queries >= 2 chars: tokenize query, find entries matching ALL tokens via prefix match, show up to 15 results in a `#search-results` dropdown created as sibling of the input. Each result: linked title, folder, 120-char snippet. For queries < 2 chars: hide dropdown and fall back to existing sidebar filtering (call `window.initNavbarSearch` logic inline — filter `#left-sidebar li` by textContent).
-4. Keyboard nav: arrow up/down highlights, Enter navigates, Escape closes.
-5. Click outside closes dropdown.
-
-**Edit `assets/default_app.js`** line 345: change `window.initNavbarSearch();` to:
-```js
+**Edit `assets/default_app.js`:**
+In the `window.initAll` function (around line 343), the current logic is:
+```javascript
 if (window.initFullSearch) {
     window.initFullSearch();
 } else {
     window.initNavbarSearch();
 }
 ```
-
-**Edit `assets/assets.go`**: add `//go:embed search.js` before `var TemplateFS embed.FS` (line 45), alongside existing embed directives.
-
-**Edit `internal/builder/layouts.go`**: Add `JsSearchTemplate *textTemplate.Template` field to `Layout` struct (after `JsCanvasTemplate` at line 137). In `loadLayout()`, add loading block after canvas JS loading (after line 96):
-```go
-jsSearchContent, err := assets.TemplateFS.ReadFile("search.js")
-if err != nil {
-    return err
-}
-tmplSearchJS, err := textTemplate.New("js").Parse(string(jsSearchContent))
-if err != nil {
-    return err
-}
-l.JsSearchTemplate = tmplSearchJS
-```
-
-**Edit `internal/builder/builder_default.go`**: After the app.js generation block (around line 263), add:
-```go
-searchJsOut, err := os.Create(filepath.Join(OutputDir, "search.js"))
-if err != nil {
-    log.Error("Couldn't create 'search.js'", "error", err)
-}
-defer searchJsOut.Close()
-err = site.Layout.JsSearchTemplate.Execute(searchJsOut, site)
-if err != nil {
-    log.Error("Couldn't execute template for 'search.js'", "error", err)
+Change this to just:
+```javascript
+if (window.initFullSearch) {
+    window.initFullSearch();
 }
 ```
+Since the sidebar no longer has a `#navbar-search` input in the default layout, the fallback to `initNavbarSearch` is not needed for the default layout. Keep the `initNavbarSearch` function itself in the file (it may be used by simple layout or as fallback).
 
-**Verify:** `go build ./...`
+3. Also add a global keyboard shortcut in `default_app.js` — inside `window.initAll`, add:
+```javascript
+document.addEventListener("keydown", function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        if (window.openSearchModal) window.openSearchModal();
+    }
+});
+```
+This allows Ctrl+K / Cmd+K to open search, which is a common convention.
+
+Verify: Run `cd /home/oliviero/Workspace/kiln && go generate ./internal/templates/... && go build ./...` to regenerate templ files and verify build passes.
 </task>
 
-<task order="4" title="Add search script tag and dropdown CSS">
-**Edit `internal/templates/layout_default.templ`**: 
-1. Wrap the search input (around line 64-69) in a `<div class="relative">` for dropdown positioning.
-2. Find where `app.js` script tag is included in the layout and add a `<script defer src={data.Site.BaseURL + "/search.js"}></script>` after it.
+<task order="3" title="Add search button and modal to simple layout" depends_on="2">
+Add search support to the simple layout, which currently has no search at all.
 
-**Edit `assets/shared.css`**: Append dropdown styles:
-```css
-.search-results-dropdown {
-  position: absolute;
-  left: 0; right: 0;
-  max-height: 60vh;
-  overflow-y: auto;
-  background: var(--sidebar-bg);
-  border: 1px solid var(--sidebar-border);
-  border-radius: 0.375rem;
-  z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+**Edit `internal/templates/layout_simple.templ`:**
+1. Add the search.js script tag in the `<head>` section, after the app.js line (line 30). Add:
+```
+<script defer src={ data.Site.BaseURL + "/search.js" }></script>
+```
+This matches how the default layout loads it (line 31 in `layout_default.templ`).
+
+2. In the header `<div class="flex gap-2 items-center">` section (around line 41), add a search button BEFORE the `@ThemeToggler()` call. Add a new templ component call `@SimpleSearchButton()`.
+
+**Edit `internal/templates/content.templ`:**
+Add a new `SimpleSearchButton` templ component (add it near the other Simple* button components like `SimpleMenuButton`, `SimpleTOCButton`, `SimpleLocalGraphButton`):
+```
+templ SimpleSearchButton() {
+	<div>
+		<button
+			id="search-button"
+			aria-label="Search notes"
+			title="Search"
+			onclick="if(window.openSearchModal)window.openSearchModal()"
+			class="cursor-pointer p-1 rounded hover:bg-hover transition-colors"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="24"
+				height="24"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="h-5 w-5 text-foreground"
+				id="search-icon"
+			>
+				<circle cx="11" cy="11" r="8"></circle>
+				<path d="m21 21-4.3-4.3"></path>
+			</svg>
+		</button>
+	</div>
 }
-.search-results-dropdown a {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  text-decoration: none;
-  color: var(--text-color);
-  border-bottom: 1px solid var(--sidebar-border);
-  font-size: 0.875rem;
-}
-.search-results-dropdown a:hover,
-.search-results-dropdown a.active {
-  background: var(--hover-color);
-}
-.search-result-title { font-weight: 600; }
-.search-result-snippet { color: var(--color-comment, #888); font-size: 0.75rem; margin-top: 0.125rem; }
-.search-result-folder { color: var(--accent-color); font-size: 0.7rem; }
 ```
 
-**Regenerate templ:** Run `templ generate` from the project root (or `go run github.com/a-h/templ/cmd/templ@v0.3.1001 generate`). If templ binary unavailable, edit `internal/templates/layout_default_templ.go` directly to match changes.
+**Edit `assets/simple_app.js`:**
+1. In the `window.initToggles` function or at the end of the file, add search initialization similar to what default_app.js does. After the existing `window.initToggles();` call area, add a call to `window.initFullSearch()` if available. Look at how `simple_app.js` initializes — it uses `document.addEventListener("DOMContentLoaded", ...)`. In that handler (or create one), add:
+```javascript
+if (window.initFullSearch) {
+    window.initFullSearch();
+}
+```
+2. Also add the Ctrl+K / Cmd+K keyboard shortcut, same as in default_app.js.
 
-**Verify:** `templ generate && go build ./... && go test ./...`
+Keep all existing `@feature:` pragmas on the files.
+
+Verify: Run `cd /home/oliviero/Workspace/kiln && go generate ./internal/templates/... && go build ./...` to regenerate templ files and verify build passes.
+</task>
+
+<task order="4" title="Add Ctrl+K hint and polish search modal UX" depends_on="3">
+Polish the search modal with a keyboard shortcut hint and empty state.
+
+**Edit `assets/search.js`:**
+1. In the modal DOM structure created by `initFullSearch`, add a subtle hint below the search input showing "Ctrl+K" (or "Cmd+K" on Mac) as the keyboard shortcut. This can be a small `<div>` with class `search-hint` showing the shortcut text.
+2. Add an empty state message in the results container: when there are no results and the query is >= 2 chars, show "No results found" text.
+3. Add an initial state message when the modal opens and the input is empty: show "Start typing to search..." as placeholder text in the results area.
+4. Ensure that when the modal is opened via `openSearchModal()`, the input is cleared and focused, and any previous results are cleared.
+5. Ensure clicking a search result link navigates and closes the modal.
+
+**Edit `assets/shared.css`:**
+Add styles for:
+- `.search-hint`: text-align right, padding 0.25rem 1rem, font-size 0.7rem, color `var(--color-comment, #888)`, border-bottom `1px solid var(--sidebar-border)`
+- `.search-empty`: padding 2rem, text-align center, color `var(--color-comment, #888)`, font-size 0.875rem
+
+Keep all `@feature:` pragmas.
+
+Verify: `go build ./...` should pass. Review the JS for syntax correctness.
 </task>
 </tasks>
