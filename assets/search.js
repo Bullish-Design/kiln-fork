@@ -1,4 +1,4 @@
-// @feature:search Client-side full-text search with inverted index and dropdown results.
+// @feature:search Client-side full-text search with inverted index and modal overlay results.
 (function () {
   var BASE_URL = "{{.BaseURL}}";
   var MAX_RESULTS = 15;
@@ -88,31 +88,62 @@
     return s;
   }
 
-  function getOrCreateDropdown(input) {
-    var existing = document.getElementById("search-results");
-    if (existing) return existing;
-    var dropdown = document.createElement("div");
-    dropdown.id = "search-results";
-    dropdown.style.position = "absolute";
-    dropdown.style.zIndex = "9999";
-    input.parentNode.style.position = "relative";
-    input.parentNode.appendChild(dropdown);
-    return dropdown;
+  function createOverlay() {
+    var overlay = document.createElement("div");
+    overlay.id = "search-overlay";
+    overlay.className = "hidden";
+
+    var modal = document.createElement("div");
+    modal.id = "search-modal";
+
+    var input = document.createElement("input");
+    input.id = "search-modal-input";
+    input.type = "text";
+    input.placeholder = "Search...";
+    input.autocomplete = "off";
+
+    var results = document.createElement("div");
+    results.id = "search-modal-results";
+
+    modal.appendChild(input);
+    modal.appendChild(results);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) hideOverlay();
+    });
+
+    return overlay;
   }
 
-  function hideDropdown() {
-    var dd = document.getElementById("search-results");
-    if (dd) dd.style.display = "none";
+  function getOverlay() {
+    return document.getElementById("search-overlay") || createOverlay();
   }
 
-  function showResults(input, results, query) {
-    var dropdown = getOrCreateDropdown(input);
-    dropdown.innerHTML = "";
-    if (results.length === 0) {
-      dropdown.style.display = "none";
-      return;
+  function showOverlay() {
+    var overlay = getOverlay();
+    overlay.classList.remove("hidden");
+    var input = document.getElementById("search-modal-input");
+    if (input) {
+      input.value = "";
+      input.focus();
     }
-    dropdown.style.display = "";
+    var results = document.getElementById("search-modal-results");
+    if (results) results.innerHTML = "";
+  }
+
+  function hideOverlay() {
+    var overlay = document.getElementById("search-overlay");
+    if (overlay) overlay.classList.add("hidden");
+  }
+
+  function showResults(results, query) {
+    var container = document.getElementById("search-modal-results");
+    if (!container) return;
+    container.innerHTML = "";
+    if (results.length === 0) return;
+
     for (var i = 0; i < results.length; i++) {
       var entry = results[i];
       var item = document.createElement("a");
@@ -137,38 +168,20 @@
       snip.textContent = snippet(entry.content, query);
       item.appendChild(snip);
 
-      dropdown.appendChild(item);
+      container.appendChild(item);
     }
   }
 
-  function filterSidebar(term) {
-    var items = document.querySelectorAll("#left-sidebar li");
-    items.forEach(function (item) {
-      var text = item.textContent.toLowerCase();
-      var matches = text.includes(term);
-      item.style.display = matches ? "" : "none";
-      if (matches && term) {
-        var details = item.querySelector("details");
-        if (details) details.open = true;
-        var parent = item.parentElement;
-        while (parent && parent.closest(".sidebar")) {
-          if (parent.tagName === "DETAILS") parent.open = true;
-          parent = parent.parentElement;
-        }
-      }
-    });
-  }
-
-  function getHighlightedIndex(dropdown) {
-    var items = dropdown.querySelectorAll(".search-result-item");
+  function getHighlightedIndex(container) {
+    var items = container.querySelectorAll(".search-result-item");
     for (var i = 0; i < items.length; i++) {
       if (items[i].classList.contains("highlighted")) return i;
     }
     return -1;
   }
 
-  function setHighlighted(dropdown, index) {
-    var items = dropdown.querySelectorAll(".search-result-item");
+  function setHighlighted(container, index) {
+    var items = container.querySelectorAll(".search-result-item");
     for (var i = 0; i < items.length; i++) {
       items[i].classList.remove("highlighted");
     }
@@ -179,58 +192,49 @@
   }
 
   window.initFullSearch = function () {
-    var searchInput = document.getElementById("navbar-search");
-    if (!searchInput) return;
-
-    var newInput = searchInput.cloneNode(true);
-    searchInput.parentNode.replaceChild(newInput, searchInput);
-
     fetchIndex().then(function (data) {
       indexEntries = data;
       invertedIndex = buildInvertedIndex(data);
     });
 
-    newInput.addEventListener("input", function (e) {
+    var overlay = getOverlay();
+    var modalInput = document.getElementById("search-modal-input");
+    var resultsContainer = document.getElementById("search-modal-results");
+
+    modalInput.addEventListener("input", function (e) {
       var term = e.target.value.trim();
       if (term.length < MIN_QUERY_LEN) {
-        hideDropdown();
-        filterSidebar(term.toLowerCase());
+        resultsContainer.innerHTML = "";
         return;
       }
       var results = searchEntries(term);
-      showResults(newInput, results, term);
+      showResults(results, term);
     });
 
-    newInput.addEventListener("keydown", function (e) {
-      var dropdown = document.getElementById("search-results");
-      if (!dropdown || dropdown.style.display === "none") return;
-      var items = dropdown.querySelectorAll(".search-result-item");
-      if (items.length === 0) return;
+    modalInput.addEventListener("keydown", function (e) {
+      var items = resultsContainer.querySelectorAll(".search-result-item");
+      if (items.length === 0 && e.key !== "Escape") return;
 
-      var current = getHighlightedIndex(dropdown);
+      var current = getHighlightedIndex(resultsContainer);
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlighted(dropdown, Math.min(current + 1, items.length - 1));
+        setHighlighted(resultsContainer, Math.min(current + 1, items.length - 1));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setHighlighted(dropdown, Math.max(current - 1, 0));
+        setHighlighted(resultsContainer, Math.max(current - 1, 0));
       } else if (e.key === "Enter") {
         e.preventDefault();
         if (current >= 0 && items[current]) {
           window.location.href = items[current].href;
         }
       } else if (e.key === "Escape") {
-        hideDropdown();
+        hideOverlay();
       }
     });
+  };
 
-    document.addEventListener("click", function (e) {
-      var dropdown = document.getElementById("search-results");
-      if (!dropdown) return;
-      if (!dropdown.contains(e.target) && e.target !== newInput) {
-        hideDropdown();
-      }
-    });
+  window.openSearchModal = function () {
+    showOverlay();
   };
 })();
