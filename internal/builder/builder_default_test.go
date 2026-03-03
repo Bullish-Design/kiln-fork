@@ -2,6 +2,8 @@
 package builder
 
 import (
+	"image/png"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +11,56 @@ import (
 	"github.com/otaleghani/kiln/internal/obsidian"
 	"github.com/otaleghani/kiln/internal/obsidian/bases"
 )
+
+func TestGeneratePageOGImages(t *testing.T) {
+	outDir := t.TempDir()
+
+	site := &DefaultSite{
+		SiteName: "Site",
+		Theme: &Theme{
+			Dark: &ThemeColors{
+				Accent: "#7e6df7",
+				Bg:     "#1e1e1e",
+				Text:   "#dcddde",
+			},
+		},
+		log: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	}
+
+	site.GeneratePageOGImages("Test", "Desc", outDir)
+
+	// Verify og.png exists and is a valid PNG
+	ogPath := filepath.Join(outDir, "og.png")
+	ogFile, err := os.Open(ogPath)
+	if err != nil {
+		t.Fatalf("og.png not created: %v", err)
+	}
+	defer ogFile.Close()
+
+	ogImg, err := png.Decode(ogFile)
+	if err != nil {
+		t.Fatalf("og.png is not a valid PNG: %v", err)
+	}
+	if bounds := ogImg.Bounds(); bounds.Dx() != 1200 || bounds.Dy() != 630 {
+		t.Errorf("og.png expected 1200x630, got %dx%d", bounds.Dx(), bounds.Dy())
+	}
+
+	// Verify twitter.png exists and is a valid PNG
+	twPath := filepath.Join(outDir, "twitter.png")
+	twFile, err := os.Open(twPath)
+	if err != nil {
+		t.Fatalf("twitter.png not created: %v", err)
+	}
+	defer twFile.Close()
+
+	twImg, err := png.Decode(twFile)
+	if err != nil {
+		t.Fatalf("twitter.png is not a valid PNG: %v", err)
+	}
+	if bounds := twImg.Bounds(); bounds.Dx() != 1200 || bounds.Dy() != 600 {
+		t.Errorf("twitter.png expected 1200x600, got %dx%d", bounds.Dx(), bounds.Dy())
+	}
+}
 
 func TestParseBaseFile_EmptyFile(t *testing.T) {
 	dir := t.TempDir()

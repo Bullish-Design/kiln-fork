@@ -13,6 +13,7 @@ import (
 
 	"github.com/otaleghani/kiln/assets"
 	"github.com/otaleghani/kiln/internal/obsidian"
+	"github.com/otaleghani/kiln/internal/ogimage"
 	"github.com/otaleghani/kiln/internal/search"
 	"github.com/otaleghani/kiln/internal/obsidian/bases"
 	"github.com/otaleghani/kiln/internal/obsidian/markdown"
@@ -430,6 +431,8 @@ func (s *DefaultSite) RenderFolder(f *obsidian.Folder) error {
 		return err
 	}
 
+	s.GeneratePageOGImages(f.RelPath, f.RelPath, filepath.Dir(f.OutPath))
+
 	return nil
 }
 
@@ -468,6 +471,8 @@ func (s *DefaultSite) RenderTag(t *obsidian.Tag) error {
 	if err != nil {
 		return err
 	}
+
+	s.GeneratePageOGImages(t.Name, t.Name, filepath.Dir(t.OutPath))
 
 	return nil
 }
@@ -525,6 +530,8 @@ func (s *DefaultSite) RenderBase(b *PageBase, allFiles []*obsidian.File) error {
 	if err != nil {
 		return err
 	}
+
+	s.GeneratePageOGImages(b.File.Name, b.File.Name, filepath.Dir(b.File.OutPath))
 
 	return nil
 }
@@ -646,6 +653,17 @@ func (s *DefaultSite) RenderNote(f *obsidian.File) error {
 		return err
 	}
 
+	// Generate OG and Twitter images
+	title := f.Name
+	if t, ok := obsidianData.Frontmatter["title"].(string); ok && t != "" {
+		title = t
+	}
+	description := "Notes on " + f.Name
+	if d, ok := obsidianData.Frontmatter["description"].(string); ok && d != "" {
+		description = d
+	}
+	s.GeneratePageOGImages(title, description, filepath.Dir(f.OutPath))
+
 	return nil
 }
 
@@ -752,7 +770,29 @@ func (s *DefaultSite) RenderCanvas(f *obsidian.File) error {
 	component := s.Layout.TemplRender(templData)
 	component.Render(context.Background(), minifierWriter)
 
+	s.GeneratePageOGImages(f.Name, f.Name, filepath.Dir(f.OutPath))
+
 	return nil
+}
+
+// GeneratePageOGImages creates OG and Twitter Card images for a page.
+func (s *DefaultSite) GeneratePageOGImages(title, description, outDir string) {
+	cfg := ogimage.ImageConfig{
+		Title:       title,
+		Description: description,
+		SiteName:    s.SiteName,
+		AccentColor: s.Theme.Dark.Accent,
+		BgColor:     s.Theme.Dark.Bg,
+		TextColor:   s.Theme.Dark.Text,
+	}
+
+	if err := ogimage.GenerateOGImage(cfg, filepath.Join(outDir, "og.png")); err != nil {
+		s.log.Warn("Couldn't generate OG image", "error", err)
+	}
+
+	if err := ogimage.GenerateTwitterImage(cfg, filepath.Join(outDir, "twitter.png")); err != nil {
+		s.log.Warn("Couldn't generate Twitter image", "error", err)
+	}
 }
 
 // ParseBaseFile parses the given base
