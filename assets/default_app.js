@@ -344,12 +344,16 @@ window.initAll = function () {
   window.initThemeToggle();
   if (window.initFullSearch) {
     window.initFullSearch();
-  } else {
-    window.initNavbarSearch();
   }
   window.setupSidebarDelegation();
   window.highlightSidebarLink();
   window.addCopyButtons();
+  document.addEventListener("keydown", function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      e.preventDefault();
+      if (window.openSearchModal) window.openSearchModal();
+    }
+  });
 
   Promise.all([window.initMathJax(), window.initMermaid()]);
 };
