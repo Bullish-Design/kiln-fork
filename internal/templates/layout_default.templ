@@ -28,6 +28,7 @@ templ DefaultLayout(data *PageData) {
 			<link rel="stylesheet" href={ data.Site.BaseURL + "/shared.css" }/>
 			@ThemeStyle(data.Site.Theme)
 			<script src={ data.Site.BaseURL + "/app.js" } defer></script>
+			<script defer src={ data.Site.BaseURL + "/search.js" }></script>
 			<script src={ data.Site.BaseURL + "/graph.js" } defer></script>
 			<script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js" defer></script>
 		</head>
@@ -61,12 +62,14 @@ templ DefaultLayout(data *PageData) {
 					</div>
 				</header>
 				<div class="p-6 flex-1 overflow-y-auto flex flex-col gap-2">
-					<input
-						type="text"
-						id="navbar-search"
-						placeholder="Search notes..."
-						class="w-full p-2 rounded border border-sidebar-border text-sm"
-					/>
+					<div class="relative">
+						<input
+							type="text"
+							id="navbar-search"
+							placeholder="Search notes..."
+							class="w-full p-2 rounded border border-sidebar-border text-sm"
+						/>
+					</div>
 					<ul class="font-main text-sm">
 						if data.Site.NavbarRoot != nil {
 							@Navbar(data.Site.NavbarRoot.Children, data.Site.FlatURLs)
