@@ -292,6 +292,17 @@ func buildDefault(log *slog.Logger) {
 		log.Error("Couldn't execute template for 'canvas.js'", "error", err)
 	}
 
+	// Generate search JS
+	searchJsOut, err := os.Create(filepath.Join(OutputDir, "search.js"))
+	if err != nil {
+		log.Error("Couldn't create 'search.js'", "error", err)
+	}
+	defer searchJsOut.Close()
+	err = site.Layout.JsSearchTemplate.Execute(searchJsOut, site)
+	if err != nil {
+		log.Error("Couldn't execute template for 'search.js'", "error", err)
+	}
+
 	// Generate discus CSS themes
 	log.Debug("Generating light giscus theme")
 	giscusLightOut, err := os.Create(filepath.Join(OutputDir, "giscus-theme-light.css"))

@@ -342,7 +342,11 @@ window.addCopyButtons = function () {
 // Calls every init function
 window.initAll = function () {
   window.initThemeToggle();
-  window.initNavbarSearch();
+  if (window.initFullSearch) {
+    window.initFullSearch();
+  } else {
+    window.initNavbarSearch();
+  }
   window.setupSidebarDelegation();
   window.highlightSidebarLink();
   window.addCopyButtons();
