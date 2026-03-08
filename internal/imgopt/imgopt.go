@@ -203,6 +203,19 @@ func ProcessImage(srcPath, outDir, webDir, baseName string, breakpoints []int) (
 			WebPath: webDir + "/" + origName,
 		})
 
+		// Try AVIF.
+		avifName := baseName + suffix + ".avif"
+		avifPath := filepath.Join(outDir, avifName)
+		if err := writeEncoded(avifPath, resized, EncodeAVIF, 80); err == nil {
+			result.Variants = append(result.Variants, Variant{
+				Width:   bp,
+				Suffix:  suffix,
+				Format:  "avif",
+				OutPath: avifPath,
+				WebPath: webDir + "/" + avifName,
+			})
+		}
+
 		// Try WebP.
 		webpName := baseName + suffix + ".webp"
 		webpPath := filepath.Join(outDir, webpName)

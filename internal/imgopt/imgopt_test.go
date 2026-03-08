@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -111,6 +112,41 @@ func TestProcessImage(t *testing.T) {
 	for _, bp := range []int{800, 400} {
 		if !widths[bp] {
 			t.Errorf("missing variant for breakpoint %d", bp)
+		}
+	}
+
+	// When avifenc is available, AVIF variants must be generated.
+	if _, err := exec.LookPath("avifenc"); err == nil {
+		avifCount := 0
+		for _, v := range result.Variants {
+			if v.Format == "avif" {
+				avifCount++
+				if _, err := os.Stat(v.OutPath); err != nil {
+					t.Errorf("avif variant file missing: %s", v.OutPath)
+				}
+			}
+		}
+		if avifCount < 2 {
+			t.Errorf("expected at least 2 AVIF variants, got %d", avifCount)
+		}
+	}
+
+	// When both avifenc and cwebp are available, AVIF must appear before WebP.
+	if _, err := exec.LookPath("avifenc"); err == nil {
+		if _, err := exec.LookPath("cwebp"); err == nil {
+			firstAVIF := -1
+			firstWebP := -1
+			for i, v := range result.Variants {
+				if v.Format == "avif" && firstAVIF == -1 {
+					firstAVIF = i
+				}
+				if v.Format == "webp" && firstWebP == -1 {
+					firstWebP = i
+				}
+			}
+			if firstAVIF >= 0 && firstWebP >= 0 && firstAVIF >= firstWebP {
+				t.Errorf("AVIF variants (first at %d) must appear before WebP variants (first at %d)", firstAVIF, firstWebP)
+			}
 		}
 	}
 }

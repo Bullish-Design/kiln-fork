@@ -69,6 +69,53 @@ func TestWriteImage_NoVariants(t *testing.T) {
 	}
 }
 
+func TestWriteImage_WithAVIFAndWebP(t *testing.T) {
+	r := &IndexResolver{
+		ImageResults: map[string]*imgopt.Result{
+			"/img/photo": {
+				Original: "/img/photo.png",
+				Variants: []imgopt.Variant{
+					{Width: 800, Format: "avif", WebPath: "/img/photo-800w.avif"},
+					{Width: 400, Format: "avif", WebPath: "/img/photo-400w.avif"},
+					{Width: 800, Format: "webp", WebPath: "/img/photo-800w.webp"},
+					{Width: 400, Format: "webp", WebPath: "/img/photo-400w.webp"},
+					{Width: 800, Format: "png", WebPath: "/img/photo-800w.png"},
+					{Width: 400, Format: "png", WebPath: "/img/photo-400w.png"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	r.writeImage(w, "/img/photo", []byte("a photo"), nil)
+	w.Flush()
+	out := buf.String()
+
+	checks := []string{
+		"<picture>",
+		"</picture>",
+		`<source type="image/avif"`,
+		`<source type="image/webp"`,
+		`loading="lazy"`,
+	}
+	for _, want := range checks {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\ngot: %s", want, out)
+		}
+	}
+
+	// AVIF source must appear before WebP source.
+	avifIdx := strings.Index(out, `<source type="image/avif"`)
+	webpIdx := strings.Index(out, `<source type="image/webp"`)
+	if avifIdx < 0 || webpIdx < 0 {
+		t.Fatalf("expected both avif and webp sources in output:\n%s", out)
+	}
+	if avifIdx >= webpIdx {
+		t.Errorf("AVIF source (at %d) must appear before WebP source (at %d)\ngot: %s", avifIdx, webpIdx, out)
+	}
+}
+
 func TestWriteImage_NilResults(t *testing.T) {
 	r := &IndexResolver{
 		ImageResults: nil,
