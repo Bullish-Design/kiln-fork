@@ -1,63 +1,51 @@
 -- DwightAuto decomposition output
--- Request: ### Image Optimization Pipeline
-Resize and convert images to WebP/AVIF at build time. Could use `golang.org/x/image` (already a dependency) for resizing and shell out to `cwebp`/`avifenc` if available
--- Timestamp: Sun 08 Mar 2026 02:42:54 PM CET
+-- Request: The new image optimization feature works well and does not have any problems with webp images if `libwebp` is installed. avif support doesn't seem to work: if `libavif` is installed it does not optimi
+-- Timestamp: Sun 08 Mar 2026 04:36:59 PM CET
 
-Here is the complete decomposition, condensed:
+Now I have the full picture. The bug is clear:
+
+1. **`ProcessImage` only tries WebP** (lines 206-217) — it never calls `EncodeAVIF`, so AVIF is never generated even when `avifenc` is available.
+2. **Format order in `writePicture`** uses insertion order from variants — we need AVIF `<source>` to come before WebP for browser precedence.
+3. When both encoders are available, AVIF should be preferred (listed first in `<picture>` element).
 
 <tasks>
-<task order="1" title="Core image processing package">
-Create `internal/imgopt` package with pure-Go image resizing and optional WebP/AVIF encoding via shell.
+<task order="1" title="Add AVIF encoding to ProcessImage and fix format ordering">
+**Context:** The `internal/imgopt/imgopt.go` file contains `ProcessImage` (line 172) which generates responsive image variants. It currently only tries WebP encoding (lines 206-217) despite having a working `EncodeAVIF` function (lines 125-167). The user reports that AVIF images are never generated even when `libavif`/`avifenc` is installed. Additionally, when both WebP and AVIF are available, AVIF should take precedence (appear first in `<source>` elements).
 
-**Files to create:**
-- `internal/imgopt/imgopt.go` — line 1: `// @feature:imgopt Image optimization: resize and convert images to WebP/AVIF at build time.`
-- `internal/imgopt/imgopt_test.go` — line 1: `// @feature:imgopt`
+**What to fix in `internal/imgopt/imgopt.go`:**
 
-**Types:** `Variant{Width int, Suffix string, Format string, OutPath string, WebPath string}`, `Result{Original string, Variants []Variant}`, `var ErrNoEncoder = errors.New("imgopt: encoder not available")`
+1. In `ProcessImage`, after the WebP encoding block (lines 206-217), add an equivalent AVIF encoding block that calls `writeEncoded` with `EncodeAVIF`. The AVIF block should look like:
+```go
+// Try AVIF.
+avifName := baseName + suffix + ".avif"
+avifPath := filepath.Join(outDir, avifName)
+if err := writeEncoded(avifPath, resized, EncodeAVIF, 80); err == nil {
+    result.Variants = append(result.Variants, Variant{
+        Width:   bp,
+        Suffix:  suffix,
+        Format:  "avif",
+        OutPath: avifPath,
+        WebPath: webDir + "/" + avifName,
+    })
+}
+```
 
-**Functions:**
-- `Resize(src image.Image, maxWidth int) image.Image` — `golang.org/x/image/draw` with `CatmullRom`. No-op if src width <= maxWidth.
-- `EncodeWebP(w io.Writer, img image.Image, quality int) error` — Shell to `cwebp` via temp files. Return `ErrNoEncoder` if not on PATH.
-- `EncodeAVIF(w io.Writer, img image.Image, quality int) error` — Shell to `avifenc`. Return `ErrNoEncoder` if unavailable.
-- `DecodeImage(path string) (image.Image, string, error)` — `image.Decode` with `_ "image/jpeg"` and `_ "image/png"` registered.
-- `ProcessImage(srcPath, outDir, webDir, baseName string, breakpoints []int) (*Result, error)` — Decodes, resizes at each breakpoint < original width, encodes WebP (if available) + original format, writes to outDir, returns Result with WebPaths.
-- `IsOptimizable(ext string) bool` — true for `.png`, `.jpg`, `.jpeg` only.
-- `DefaultBreakpoints() []int` — returns `[]int{1200, 800, 400}`.
+2. **AVIF must have precedence over WebP.** The `writePicture` function in `internal/obsidian/markdown/wikilinks.go` (line 357) renders `<source>` elements in the order they appear in `formatOrder`, which is built from the order variants appear in `result.Variants`. Browsers pick the **first** `<source>` they support, so AVIF must come before WebP in the variants list. 
 
-**Tests (write FIRST):** `TestResize` (1600x900→800=800x450), `TestResize_SmallerThanTarget` (400x300→800=400x300), `TestDecodeImage` (round-trip PNG), `TestProcessImage` (1600x900 PNG, breakpoints [800,400], assert variants exist), `TestIsOptimizable` (table-driven).
+   To achieve this, put the AVIF encoding block **BEFORE** the WebP block in `ProcessImage`. The final order inside the breakpoint loop should be:
+   - Encode original format (png/jpeg) — already there
+   - Try AVIF (new — add before WebP)
+   - Try WebP (already there — move after AVIF)
 
-**Verify:** `go test ./internal/imgopt/...`
-</task>
+3. **Update the test** in `internal/imgopt/imgopt_test.go`. The existing `TestProcessImage` (line 73) only checks for PNG variants. Update or add a test that verifies:
+   - When `avifenc` is on PATH, AVIF variants are generated (you can check this conditionally using `exec.LookPath("avifenc")`)
+   - When both are available, AVIF variants appear before WebP variants in `result.Variants`
+   - The test should still pass when neither encoder is available (skip the format-specific checks)
 
-<task order="2" title="Wire optimization into both build modes">
-Integrate `imgopt` into both default and custom build pipelines.
+**Also update** `internal/obsidian/markdown/picture_test.go` — the existing `TestWriteImage_WithVariants` (line 14) only has webp+png variants. Add a test case `TestWriteImage_WithAVIFAndWebP` that provides variants in order avif, webp, png and verifies that the `<source type="image/avif"` appears before `<source type="image/webp"` in the output. This confirms the `writePicture` function respects the ordering from `ProcessImage`.
 
-**Files to edit:**
-- `internal/builder/builder_default.go` — Add `ImageResults map[string]*imgopt.Result` to `DefaultSite` struct (line ~839). Initialize in constructor (line ~65). Replace static copy loop (lines 137-144): check `imgopt.IsOptimizable(file.Ext)`, call `imgopt.ProcessImage`, store in `site.ImageResults[file.WebPath]`; fallback to `obsidian.CopyFile` on error or non-optimizable files. Add `os.MkdirAll` before processing.
-- `internal/builder/builder_custom.go` — Read fully to find `CustomSite` struct. Add `ImageResults map[string]*imgopt.Result`. Initialize where `&CustomSite{}` is constructed. In `parseStaticFiles()` (line 256), wrap `obsidian.CopyFile` (line 275) with same `imgopt.IsOptimizable` check and `ProcessImage` call.
-- Both files: add import `"github.com/otaleghani/kiln/internal/imgopt"`.
+**Verify:** `go test ./internal/imgopt/ ./internal/obsidian/markdown/ -run "TestProcessImage|TestWriteImage|TestIsOptimizable" -v`
 
-**Verify:** `go test ./internal/builder/...`
-</task>
-
-<task order="3" title="Picture element rendering and full wiring">
-Update markdown renderer to emit `<picture>` elements and wire `ImageResults` from builder through to renderer.
-
-**Files to edit:**
-- `internal/obsidian/markdown/wikilinks.go` — Add `ImageResults map[string]*imgopt.Result` field to `IndexResolver` (line 517). Modify `writeImage` (line 330): if `ImageResults` has entry for `src`, call new `writePicture` method; otherwise emit plain `<img loading="lazy">`. New method `writePicture` emits `<picture>` with `<source type="image/webp" srcset="...">` for webp variants, `<source srcset="...">` for original-format variants, and `<img src="..." loading="lazy">` fallback. Add `.avif` to `isImageFile` (line 480). Add import for `"fmt"` and `"github.com/otaleghani/kiln/internal/imgopt"`.
-- `internal/obsidian/markdown/markdown.go` — Read fully. Add `ImageResults map[string]*imgopt.Result` to `ObsidianMarkdown`. Pass it to `IndexResolver` when constructing it in the `Render` method.
-- `internal/builder/builder_default.go` — After image processing loop, before note rendering, set `site.Markdown.ImageResults = site.ImageResults`.
-- `internal/builder/builder_custom.go` — After `parseStaticFiles()`, set markdown renderer's `ImageResults`.
-- `internal/builder/utils.go` — Add `.avif` to `isImageExt` and `isAllowedExt`.
-
-**Files to create:**
-- `internal/obsidian/markdown/picture_test.go` — line 1: `// @feature:wikilinks`
-
-**Tests (write FIRST):**
-- `TestWriteImage_WithVariants` — `IndexResolver` with `ImageResults` for `/img/photo`, variants with webp 800w/400w + png 800w/400w. Assert output contains `<picture>`, `<source type="image/webp"`, `srcset=`, `loading="lazy"`, `</picture>`.
-- `TestWriteImage_NoVariants` — src not in ImageResults. Assert plain `<img loading="lazy">`.
-- `TestWriteImage_NilResults` — `ImageResults` is nil. Assert plain `<img loading="lazy">`.
-
-**Verify:** `go test ./internal/obsidian/markdown/... && go test ./internal/builder/... && go test ./internal/imgopt/...`
+**Pragma:** All edited files already have their `@feature:imgopt` or `@feature:wikilinks` pragmas — do not remove them.
 </task>
 </tasks>
