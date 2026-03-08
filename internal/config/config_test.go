@@ -1,0 +1,195 @@
+// @feature:cli
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoad_ValidFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kiln.yaml")
+	content := `theme: dracula
+font: merriweather
+url: https://example.com
+name: My Site
+input: ./notes
+output: ./dist
+mode: custom
+layout: simple
+flat-urls: true
+disable-toc: true
+disable-local-graph: true
+port: "3000"
+log: debug
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write kiln.yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	if cfg.Theme != "dracula" {
+		t.Errorf("Theme = %q, want %q", cfg.Theme, "dracula")
+	}
+	if cfg.Font != "merriweather" {
+		t.Errorf("Font = %q, want %q", cfg.Font, "merriweather")
+	}
+	if cfg.URL != "https://example.com" {
+		t.Errorf("URL = %q, want %q", cfg.URL, "https://example.com")
+	}
+	if cfg.Name != "My Site" {
+		t.Errorf("Name = %q, want %q", cfg.Name, "My Site")
+	}
+	if cfg.Input != "./notes" {
+		t.Errorf("Input = %q, want %q", cfg.Input, "./notes")
+	}
+	if cfg.Output != "./dist" {
+		t.Errorf("Output = %q, want %q", cfg.Output, "./dist")
+	}
+	if cfg.Mode != "custom" {
+		t.Errorf("Mode = %q, want %q", cfg.Mode, "custom")
+	}
+	if cfg.Layout != "simple" {
+		t.Errorf("Layout = %q, want %q", cfg.Layout, "simple")
+	}
+	if !cfg.FlatURLs {
+		t.Error("FlatURLs = false, want true")
+	}
+	if !cfg.DisableTOC {
+		t.Error("DisableTOC = false, want true")
+	}
+	if !cfg.DisableLocalGraph {
+		t.Error("DisableLocalGraph = false, want true")
+	}
+	if cfg.Port != "3000" {
+		t.Errorf("Port = %q, want %q", cfg.Port, "3000")
+	}
+	if cfg.Log != "debug" {
+		t.Errorf("Log = %q, want %q", cfg.Log, "debug")
+	}
+}
+
+func TestLoad_PartialFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kiln.yaml")
+	content := `theme: nord
+url: https://notes.dev
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write kiln.yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	if cfg.Theme != "nord" {
+		t.Errorf("Theme = %q, want %q", cfg.Theme, "nord")
+	}
+	if cfg.URL != "https://notes.dev" {
+		t.Errorf("URL = %q, want %q", cfg.URL, "https://notes.dev")
+	}
+
+	// All other fields should be zero values.
+	if cfg.Font != "" {
+		t.Errorf("Font = %q, want empty", cfg.Font)
+	}
+	if cfg.Name != "" {
+		t.Errorf("Name = %q, want empty", cfg.Name)
+	}
+	if cfg.Input != "" {
+		t.Errorf("Input = %q, want empty", cfg.Input)
+	}
+	if cfg.Output != "" {
+		t.Errorf("Output = %q, want empty", cfg.Output)
+	}
+	if cfg.Mode != "" {
+		t.Errorf("Mode = %q, want empty", cfg.Mode)
+	}
+	if cfg.Layout != "" {
+		t.Errorf("Layout = %q, want empty", cfg.Layout)
+	}
+	if cfg.FlatURLs {
+		t.Error("FlatURLs = true, want false")
+	}
+	if cfg.DisableTOC {
+		t.Error("DisableTOC = true, want false")
+	}
+	if cfg.DisableLocalGraph {
+		t.Error("DisableLocalGraph = true, want false")
+	}
+	if cfg.Port != "" {
+		t.Errorf("Port = %q, want empty", cfg.Port)
+	}
+	if cfg.Log != "" {
+		t.Errorf("Log = %q, want empty", cfg.Log)
+	}
+}
+
+func TestLoad_FileNotFound(t *testing.T) {
+	cfg, err := Load("/nonexistent/path/kiln.yaml")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil config, got %+v", cfg)
+	}
+}
+
+func TestLoad_InvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kiln.yaml")
+	if err := os.WriteFile(path, []byte(":::bad yaml[[["), 0o644); err != nil {
+		t.Fatalf("write kiln.yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err == nil {
+		t.Fatal("expected non-nil error for invalid YAML")
+	}
+	if cfg != nil {
+		t.Errorf("expected nil config on error, got %+v", cfg)
+	}
+}
+
+func TestLoad_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kiln.yaml")
+	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+		t.Fatalf("write kiln.yaml: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config for empty file")
+	}
+
+	// All fields should be zero values.
+	if cfg.Theme != "" {
+		t.Errorf("Theme = %q, want empty", cfg.Theme)
+	}
+	if cfg.FlatURLs {
+		t.Error("FlatURLs = true, want false")
+	}
+	if cfg.DisableTOC {
+		t.Error("DisableTOC = true, want false")
+	}
+	if cfg.DisableLocalGraph {
+		t.Error("DisableLocalGraph = true, want false")
+	}
+}
