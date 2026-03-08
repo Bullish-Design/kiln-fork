@@ -131,11 +131,13 @@ func TestProcessImage(t *testing.T) {
 		}
 	}
 
-	// When both avifenc and cwebp are available, AVIF must appear before WebP.
+	// When both avifenc and cwebp are available, AVIF must appear before WebP,
+	// and both must appear before PNG.
 	if _, err := exec.LookPath("avifenc"); err == nil {
 		if _, err := exec.LookPath("cwebp"); err == nil {
 			firstAVIF := -1
 			firstWebP := -1
+			firstPNG := -1
 			for i, v := range result.Variants {
 				if v.Format == "avif" && firstAVIF == -1 {
 					firstAVIF = i
@@ -143,9 +145,18 @@ func TestProcessImage(t *testing.T) {
 				if v.Format == "webp" && firstWebP == -1 {
 					firstWebP = i
 				}
+				if v.Format == "png" && firstPNG == -1 {
+					firstPNG = i
+				}
 			}
 			if firstAVIF >= 0 && firstWebP >= 0 && firstAVIF >= firstWebP {
 				t.Errorf("AVIF variants (first at %d) must appear before WebP variants (first at %d)", firstAVIF, firstWebP)
+			}
+			if firstPNG >= 0 && firstAVIF >= 0 && firstPNG <= firstAVIF {
+				t.Errorf("PNG variants (first at %d) must appear after AVIF variants (first at %d)", firstPNG, firstAVIF)
+			}
+			if firstPNG >= 0 && firstWebP >= 0 && firstPNG <= firstWebP {
+				t.Errorf("PNG variants (first at %d) must appear after WebP variants (first at %d)", firstPNG, firstWebP)
 			}
 		}
 	}

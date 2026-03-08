@@ -186,7 +186,33 @@ func ProcessImage(srcPath, outDir, webDir, baseName string, breakpoints []int) (
 		resized := Resize(img, bp)
 		suffix := fmt.Sprintf("-%dw", bp)
 
-		// Encode original format.
+		// Try AVIF first (best compression).
+		avifName := baseName + suffix + ".avif"
+		avifPath := filepath.Join(outDir, avifName)
+		if err := writeEncoded(avifPath, resized, EncodeAVIF, 80); err == nil {
+			result.Variants = append(result.Variants, Variant{
+				Width:   bp,
+				Suffix:  suffix,
+				Format:  "avif",
+				OutPath: avifPath,
+				WebPath: webDir + "/" + avifName,
+			})
+		}
+
+		// Try WebP second.
+		webpName := baseName + suffix + ".webp"
+		webpPath := filepath.Join(outDir, webpName)
+		if err := writeEncoded(webpPath, resized, EncodeWebP, 80); err == nil {
+			result.Variants = append(result.Variants, Variant{
+				Width:   bp,
+				Suffix:  suffix,
+				Format:  "webp",
+				OutPath: webpPath,
+				WebPath: webDir + "/" + webpName,
+			})
+		}
+
+		// Encode original format last (fallback).
 		origExt := "." + format
 		origName := baseName + suffix + origExt
 		origPath := filepath.Join(outDir, origName)
@@ -202,32 +228,6 @@ func ProcessImage(srcPath, outDir, webDir, baseName string, breakpoints []int) (
 			OutPath: origPath,
 			WebPath: webDir + "/" + origName,
 		})
-
-		// Try AVIF.
-		avifName := baseName + suffix + ".avif"
-		avifPath := filepath.Join(outDir, avifName)
-		if err := writeEncoded(avifPath, resized, EncodeAVIF, 80); err == nil {
-			result.Variants = append(result.Variants, Variant{
-				Width:   bp,
-				Suffix:  suffix,
-				Format:  "avif",
-				OutPath: avifPath,
-				WebPath: webDir + "/" + avifName,
-			})
-		}
-
-		// Try WebP.
-		webpName := baseName + suffix + ".webp"
-		webpPath := filepath.Join(outDir, webpName)
-		if err := writeEncoded(webpPath, resized, EncodeWebP, 80); err == nil {
-			result.Variants = append(result.Variants, Variant{
-				Width:   bp,
-				Suffix:  suffix,
-				Format:  "webp",
-				OutPath: webpPath,
-				WebPath: webDir + "/" + webpName,
-			})
-		}
 	}
 
 	return result, nil

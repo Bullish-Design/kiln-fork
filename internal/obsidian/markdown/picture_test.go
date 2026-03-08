@@ -43,6 +43,16 @@ func TestWriteImage_WithVariants(t *testing.T) {
 			t.Errorf("output missing %q\ngot: %s", want, out)
 		}
 	}
+
+	// WebP source must appear before PNG source.
+	webpIdx := strings.Index(out, `<source type="image/webp"`)
+	pngIdx := strings.Index(out, `<source type="image/png"`)
+	if webpIdx < 0 || pngIdx < 0 {
+		t.Fatalf("expected both webp and png sources in output:\n%s", out)
+	}
+	if webpIdx >= pngIdx {
+		t.Errorf("WebP source (at %d) must appear before PNG source (at %d)\ngot: %s", webpIdx, pngIdx, out)
+	}
 }
 
 func TestWriteImage_NoVariants(t *testing.T) {
@@ -113,6 +123,15 @@ func TestWriteImage_WithAVIFAndWebP(t *testing.T) {
 	}
 	if avifIdx >= webpIdx {
 		t.Errorf("AVIF source (at %d) must appear before WebP source (at %d)\ngot: %s", avifIdx, webpIdx, out)
+	}
+
+	// WebP source must appear before PNG source.
+	pngIdx := strings.Index(out, `<source type="image/png"`)
+	if pngIdx < 0 {
+		t.Fatalf("expected png source in output:\n%s", out)
+	}
+	if pngIdx <= webpIdx {
+		t.Errorf("PNG source (at %d) must appear after WebP source (at %d)\ngot: %s", pngIdx, webpIdx, out)
 	}
 }
 
