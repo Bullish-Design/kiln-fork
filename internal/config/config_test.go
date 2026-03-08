@@ -193,3 +193,42 @@ func TestLoad_EmptyFile(t *testing.T) {
 		t.Error("DisableLocalGraph = true, want false")
 	}
 }
+
+func TestFindFile_Exists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kiln.yaml")
+	if err := os.WriteFile(path, []byte("theme: nord\n"), 0o644); err != nil {
+		t.Fatalf("write kiln.yaml: %v", err)
+	}
+
+	got, err := FindFile(dir)
+	if err != nil {
+		t.Fatalf("FindFile: %v", err)
+	}
+	if got != path {
+		t.Errorf("FindFile = %q, want %q", got, path)
+	}
+}
+
+func TestFindFile_NotFound(t *testing.T) {
+	dir := t.TempDir()
+
+	got, err := FindFile(dir)
+	if err != nil {
+		t.Fatalf("FindFile: %v", err)
+	}
+	if got != "" {
+		t.Errorf("FindFile = %q, want empty", got)
+	}
+}
+
+func TestValueOr_OnlyOverridesEmpty(t *testing.T) {
+	cfg := Config{Theme: "dracula", Font: ""}
+
+	if got := cfg.ValueOr("theme", "default"); got != "dracula" {
+		t.Errorf("ValueOr(theme) = %q, want %q", got, "dracula")
+	}
+	if got := cfg.ValueOr("font", "inter"); got != "inter" {
+		t.Errorf("ValueOr(font) = %q, want %q", got, "inter")
+	}
+}
