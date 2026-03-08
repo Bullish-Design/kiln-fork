@@ -332,9 +332,13 @@ func (r *IndexResolver) renderImage(
 // If ImageResults contains variants for src, it emits a <picture> element;
 // otherwise it emits a plain <img loading="lazy">.
 func (r *IndexResolver) writeImage(w util.BufWriter, src string, alt []byte, title []byte) {
+	w.WriteString(`<figure class="img-figure">`)
+
 	if r.ImageResults != nil {
 		if result, ok := r.ImageResults[src]; ok && len(result.Variants) > 0 {
 			r.writePicture(w, src, alt, title, result)
+			r.writeExpandButton(w)
+			w.WriteString("</figure>")
 			return
 		}
 	}
@@ -350,6 +354,19 @@ func (r *IndexResolver) writeImage(w util.BufWriter, src string, alt []byte, tit
 		w.WriteString("\"")
 	}
 	w.WriteString(" loading=\"lazy\">")
+	r.writeExpandButton(w)
+	w.WriteString("</figure>")
+}
+
+func (r *IndexResolver) writeExpandButton(w util.BufWriter) {
+	w.WriteString(`<button class="img-expand-btn" aria-label="View full size" type="button">`)
+	w.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`)
+	w.WriteString(`<path d="M15 3h6v6"/>`)
+	w.WriteString(`<path d="M9 21H3v-6"/>`)
+	w.WriteString(`<path d="M21 3l-7 7"/>`)
+	w.WriteString(`<path d="M3 21l7-7"/>`)
+	w.WriteString(`</svg>`)
+	w.WriteString(`</button>`)
 }
 
 // writePicture emits a <picture> element with <source> entries for each format

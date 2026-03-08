@@ -38,6 +38,9 @@ func TestWriteImage_WithVariants(t *testing.T) {
 		"srcset=",
 		`loading="lazy"`,
 		`sizes="min(65ch, 100vw)"`,
+		`<figure class="img-figure">`,
+		`</figure>`,
+		`<button class="img-expand-btn"`,
 	}
 	for _, want := range checks {
 		if !strings.Contains(out, want) {
@@ -80,6 +83,12 @@ func TestWriteImage_NoVariants(t *testing.T) {
 	}
 	if strings.Contains(out, `sizes=`) {
 		t.Errorf("plain <img> without srcset should not have sizes attribute, got: %s", out)
+	}
+	if !strings.Contains(out, `<figure class="img-figure">`) {
+		t.Errorf("expected <figure> wrapper, got: %s", out)
+	}
+	if !strings.Contains(out, `<button class="img-expand-btn"`) {
+		t.Errorf("expected expand button, got: %s", out)
 	}
 }
 
@@ -159,5 +168,11 @@ func TestWriteImage_NilResults(t *testing.T) {
 	}
 	if strings.Contains(out, "<picture>") {
 		t.Errorf("should not contain <picture>, got: %s", out)
+	}
+	if !strings.Contains(out, `<figure class="img-figure">`) {
+		t.Errorf("expected <figure> wrapper, got: %s", out)
+	}
+	if !strings.Contains(out, `<button class="img-expand-btn"`) {
+		t.Errorf("expected expand button, got: %s", out)
 	}
 }
