@@ -176,3 +176,62 @@ func TestWriteImage_NilResults(t *testing.T) {
 		t.Errorf("expected expand button, got: %s", out)
 	}
 }
+
+func TestWriteImage_FullOutputStructure(t *testing.T) {
+	r := &IndexResolver{
+		ImageResults: map[string]*imgopt.Result{
+			"/img/hero.png": {
+				Original: "/img/hero.png",
+				Variants: []imgopt.Variant{
+					{Width: 1200, Format: "avif", WebPath: "/img/hero-1200w.avif"},
+					{Width: 800, Format: "avif", WebPath: "/img/hero-800w.avif"},
+					{Width: 1200, Format: "webp", WebPath: "/img/hero-1200w.webp"},
+					{Width: 800, Format: "webp", WebPath: "/img/hero-800w.webp"},
+					{Width: 1200, Format: "png", WebPath: "/img/hero-1200w.png"},
+					{Width: 800, Format: "png", WebPath: "/img/hero-800w.png"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	r.writeImage(w, "/img/hero.png", []byte("Hero image"), nil)
+	w.Flush()
+	out := buf.String()
+
+	// Verify structural order: figure > picture > sources > img > button > /figure
+	checks := []struct{ name, substr string }{
+		{"figure open", `<figure class="img-figure">`},
+		{"picture open", `<picture>`},
+		{"avif source with sizes", `<source type="image/avif" srcset="`},
+		{"sizes on source", `sizes="min(65ch, 100vw)"`},
+		{"webp source", `<source type="image/webp"`},
+		{"png source", `<source type="image/png"`},
+		{"fallback img", `<img src="/img/hero.png"`},
+		{"picture close", `</picture>`},
+		{"expand button", `<button class="img-expand-btn"`},
+		{"figure close", `</figure>`},
+	}
+	for _, c := range checks {
+		if !strings.Contains(out, c.substr) {
+			t.Errorf("%s: missing %q\ngot: %s", c.name, c.substr, out)
+		}
+	}
+
+	// Verify ordering: figure before picture before button before /figure
+	figureIdx := strings.Index(out, `<figure`)
+	pictureIdx := strings.Index(out, `<picture>`)
+	buttonIdx := strings.Index(out, `<button class="img-expand-btn"`)
+	closeFigureIdx := strings.Index(out, `</figure>`)
+
+	if figureIdx >= pictureIdx {
+		t.Error("figure must come before picture")
+	}
+	if pictureIdx >= buttonIdx {
+		t.Error("picture must come before button")
+	}
+	if buttonIdx >= closeFigureIdx {
+		t.Error("button must come before closing figure")
+	}
+}
