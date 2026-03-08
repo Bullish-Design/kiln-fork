@@ -1,53 +1,55 @@
 -- DwightAuto decomposition output
--- Request: Avif optimization doesn't work. Avif optimization should have precedence over webp.
--- Timestamp: Sun 08 Mar 2026 04:57:52 PM CET
+-- Request: There are a couple of things to change regarding the image optimization feature. First thing first the order of the `<source>` tag should be avif->webp->png. If we put png on top every browser is goin
+-- Timestamp: Sun 08 Mar 2026 05:15:39 PM CET
 
-Good. The builders call `ProcessImage` and store results in `ImageResults` maps. The fix in `ProcessImage` to add AVIF generation (and ordering it before WebP) is the correct and complete fix — it propagates through the existing `writePicture` rendering correctly.
+Now I have the complete picture. The fix is straightforward — there are two approaches:
 
-Now I have everything I need to produce the task decomposition. The changes are actually quite straightforward — the developer has already written the correct code in their working copy. The task is small enough that it's really just 2 sub-tasks:
+1. **Fix in `ProcessImage()`**: Reorder variant appends so AVIF comes first, then WebP, then original format
+2. **Fix in `writePicture()`**: Use an explicit format order instead of relying on first-seen order from variants
+
+The cleanest fix is approach 1 (reorder in `ProcessImage`) since the `writePicture` function already respects the order from the variants slice, and existing tests already check that AVIF appears before WebP. We just need to also ensure PNG comes last.
+
+This is actually a small, focused change — only 2 files need editing. Let me decompose it:
 
 <tasks>
-<task order="1" title="Add AVIF generation and ordering tests">
-Fix AVIF optimization in the imgopt package. The committed `ProcessImage` function in `internal/imgopt/imgopt.go` only generates WebP variants — it's missing AVIF entirely. AVIF must be generated with higher priority (before WebP) so that `<picture>` elements list AVIF sources first.
+<task order="1" title="Fix source tag order: avif → webp → png">
+The `<picture>` element currently emits `<source>` tags in the wrong order. The original format (PNG/JPEG) appears first because `ProcessImage()` in `internal/imgopt/imgopt.go` appends the original-format variant before AVIF and WebP for each breakpoint. Since `writePicture()` in `internal/obsidian/markdown/wikilinks.go` emits `<source>` tags in first-seen format order, browsers pick PNG first.
 
-**Files to edit:**
+**What to change:**
 
-1. `internal/imgopt/imgopt_test.go` — Add tests for AVIF generation and ordering:
-   - Add `"os/exec"` to the import block.
-   - In `TestProcessImage`, after the existing breakpoint width checks (after line ~116), add two new test sections:
-     - **AVIF variant generation check**: When `avifenc` is on PATH (check with `exec.LookPath("avifenc")`), assert that at least 2 AVIF variants are produced and that each variant's `OutPath` file exists on disk.
-     - **AVIF-before-WebP ordering check**: When both `avifenc` and `cwebp` are on PATH, find the index of the first AVIF variant and the first WebP variant in `result.Variants`. Assert that the first AVIF index is less than the first WebP index.
+1. **Edit `internal/imgopt/imgopt.go`** — In the `ProcessImage()` function (lines 172-234), reorder the variant appends inside the `for _, bp := range breakpoints` loop so that AVIF is tried first, then WebP, then the original format. Currently the order is:
+   - Original format (line 198-204)  
+   - AVIF (lines 206-217)
+   - WebP (lines 219-230)
 
-2. `internal/imgopt/imgopt.go` — In the `ProcessImage` function, add AVIF encoding **before** the existing WebP block. Inside the `for _, bp := range breakpoints` loop, after the original format variant is appended (after the line `WebPath: webDir + "/" + origName,` closing brace), add:
-   - Build `avifName` as `baseName + suffix + ".avif"` and `avifPath` as `filepath.Join(outDir, avifName)`.
-   - Call `writeEncoded(avifPath, resized, EncodeAVIF, 80)`. If no error, append a `Variant{Width: bp, Suffix: suffix, Format: "avif", OutPath: avifPath, WebPath: webDir + "/" + avifName}` to `result.Variants`.
-   - This block must appear BEFORE the existing "Try WebP" block so that AVIF variants are ordered before WebP variants in the slice.
+   Change to:
+   - AVIF first (try encoding, append variant if successful)
+   - WebP second (try encoding, append variant if successful)
+   - Original format last (always appended)
 
-**Verify:** `go test ./internal/imgopt/ -v -run TestProcessImage` — all assertions pass. AVIF variants are generated when `avifenc` is available, and they appear before WebP variants in the result.
-</task>
-<task order="2" title="Add picture element AVIF ordering test" depends_on="1">
-Add a test for the `<picture>` element rendering to verify AVIF `<source>` tags appear before WebP `<source>` tags.
+   This ensures the `Result.Variants` slice has formats in avif→webp→png order, which `writePicture()` will respect when building `formatOrder`.
 
-**File to edit:** `internal/obsidian/markdown/picture_test.go`
+2. **Edit `internal/imgopt/imgopt_test.go`** — In `TestProcessImage()` (lines 134-151), the existing test checks that "AVIF must appear before WebP" when both encoders are available. Add an additional check: when all three formats are present, PNG must appear **after** both AVIF and WebP. Specifically, after the existing AVIF-before-WebP check (line 147-149), add a check that `firstPNG` index is greater than both `firstAVIF` and `firstWebP`. Track `firstPNG` alongside the existing `firstAVIF` and `firstWebP` variables.
 
-Add a new test function `TestWriteImage_WithAVIFAndWebP` after the existing `TestWriteImage_NoVariants` function. This test should:
+3. **Edit `internal/obsidian/markdown/picture_test.go`** — In `TestWriteImage_WithAVIFAndWebP()` (lines 72-117), add assertions that:
+   - WebP source appears before PNG source  
+   - PNG source appears last (after both AVIF and WebP)
+   
+   Currently it only checks AVIF before WebP (lines 108-116). Add:
+   ```go
+   pngIdx := strings.Index(out, `<source type="image/png"`)
+   if pngIdx < 0 {
+       t.Fatalf("expected png source in output:\n%s", out)
+   }
+   if pngIdx <= webpIdx {
+       t.Errorf("PNG source (at %d) must appear after WebP source (at %d)\ngot: %s", pngIdx, webpIdx, out)
+   }
+   ```
 
-1. Create an `IndexResolver` with `ImageResults` containing a `/img/photo` key mapped to an `imgopt.Result` with these variants (in this exact order, matching what `ProcessImage` now produces with AVIF before WebP):
-   - `{Width: 800, Format: "avif", WebPath: "/img/photo-800w.avif"}`
-   - `{Width: 400, Format: "avif", WebPath: "/img/photo-400w.avif"}`
-   - `{Width: 800, Format: "webp", WebPath: "/img/photo-800w.webp"}`
-   - `{Width: 400, Format: "webp", WebPath: "/img/photo-400w.webp"}`
-   - `{Width: 800, Format: "png", WebPath: "/img/photo-800w.png"}`
-   - `{Width: 400, Format: "png", WebPath: "/img/photo-400w.png"}`
+   Also in `TestWriteImage_WithVariants()` (lines 13-46), add a PNG source check: the test has variants with webp then png formats. Add an assertion that the webp `<source>` appears before the png `<source>` in the output.
 
-2. Call `r.writeImage(w, "/img/photo", []byte("a photo"), nil)` and flush the buffer.
-
-3. Assert the output contains: `<picture>`, `</picture>`, `<source type="image/avif"`, `<source type="image/webp"`, `loading="lazy"`.
-
-4. Assert AVIF source ordering: use `strings.Index` to find the position of `<source type="image/avif"` and `<source type="image/webp"` in the output. Assert that the AVIF index is less than the WebP index (AVIF has precedence).
-
-The existing `writePicture` function in `internal/obsidian/markdown/wikilinks.go` already preserves insertion order of formats from the `Variants` slice, so no implementation changes are needed — the test should pass because task 1 ensures AVIF variants come before WebP in the `Variants` slice.
-
-**Verify:** `go test ./internal/obsidian/markdown/ -v -run TestWriteImage` — all `TestWriteImage_*` tests pass, including the new AVIF ordering test.
+**Verify command:** `go test ./internal/imgopt/... ./internal/obsidian/markdown/...`
 </task>
 </tasks>
+
+This is a single-task decomposition because the change is small and focused — it's just reordering variant appends in one function and updating the corresponding tests. No new files, no new types, no architectural changes needed.
