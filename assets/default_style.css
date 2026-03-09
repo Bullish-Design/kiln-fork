@@ -842,8 +842,26 @@ body {
   flex-direction: column;
 }
 @media (width >= 80rem) {
-  .collapsed {
-    display: none;
+  #left-sidebar, #right-sidebar {
+    transition: none;
+    will-change: transform, opacity;
+  }
+
+  .animate-ready #left-sidebar,
+  .animate-ready #right-sidebar {
+    transition: transform 200ms ease-out, opacity 200ms ease-out;
+  }
+
+  #left-sidebar.collapsed {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #right-sidebar.collapsed {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
   }
 }
 .expanded #local-graph-container {

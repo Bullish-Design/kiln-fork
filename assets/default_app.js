@@ -370,6 +370,14 @@ window.initAll = function () {
   });
 
   Promise.all([window.initMathJax(), window.initMermaid()]);
+
+  if (!document.body.classList.contains('animate-ready')) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.classList.add('animate-ready');
+      });
+    });
+  }
 };
 
 document.addEventListener("DOMContentLoaded", () => {
