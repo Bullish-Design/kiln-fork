@@ -505,6 +505,10 @@ path.edge {
   justify-content: center;
   background: rgba(0, 0, 0, 0.9);
   cursor: zoom-out;
+  animation: kiln-fade-in 150ms ease-out;
+}
+#img-lightbox.closing {
+  animation: kiln-fade-out 120ms ease-in forwards;
 }
 #img-lightbox.hidden {
   display: none;
@@ -995,10 +999,13 @@ details.callout[open] > summary .callout-title::after {
   line-height: 1.5;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-border) transparent;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-out;
 }
-#link-preview-tooltip.hidden {
-  display: none;
+#link-preview-tooltip.visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 #link-preview-tooltip img {
   max-width: 100%;

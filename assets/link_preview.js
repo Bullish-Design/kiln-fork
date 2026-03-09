@@ -23,7 +23,6 @@
     el.style.maxWidth = TOOLTIP_MAX_WIDTH + "px";
     el.style.maxHeight = TOOLTIP_MAX_HEIGHT + "px";
     el.style.overflowY = "auto";
-    el.style.display = "none";
     el.style.zIndex = "9999";
     document.body.appendChild(el);
 
@@ -39,7 +38,7 @@
 
   function hideTooltip() {
     var el = document.getElementById("link-preview-tooltip");
-    if (el) el.style.display = "none";
+    if (el) el.classList.remove("visible");
     activeAnchor = null;
   }
 
@@ -120,7 +119,7 @@
         tooltip.innerHTML = content;
         tooltip.scrollTop = 0;
         positionTooltip(tooltip, link);
-        tooltip.style.display = "block";
+        tooltip.classList.add("visible");
         activeAnchor = link;
       });
     }, HOVER_DELAY);
@@ -146,7 +145,7 @@
   function onScroll() {
     if (!activeAnchor) return;
     var tooltip = document.getElementById("link-preview-tooltip");
-    if (!tooltip || tooltip.style.display === "none") return;
+    if (!tooltip || !tooltip.classList.contains("visible")) return;
     var rect = activeAnchor.getBoundingClientRect();
     if (rect.bottom < 0 || rect.top > window.innerHeight) {
       hideTooltip();
@@ -162,7 +161,7 @@
   function onClickOutside(e) {
     var tooltip = document.getElementById("link-preview-tooltip");
     if (!tooltip) return;
-    if (tooltip.style.display === "none") return;
+    if (!tooltip.classList.contains("visible")) return;
     if (tooltip.contains(e.target)) return;
     if (e.target.closest && e.target.closest("a.internal-link")) return;
     hideTooltip();

@@ -316,7 +316,14 @@ window.initLightbox = function () {
     overlay.innerHTML = '<button id="img-lightbox-close" type="button" aria-label="Close">&times;</button><img src="" alt="">';
     document.body.appendChild(overlay);
 
-    const close = () => overlay.classList.add('hidden');
+    const close = () => {
+      overlay.classList.add('closing');
+      overlay.addEventListener('animationend', function handler() {
+        overlay.removeEventListener('animationend', handler);
+        overlay.classList.add('hidden');
+        overlay.classList.remove('closing');
+      }, { once: true });
+    };
     overlay.addEventListener('click', (e) => {
       if (e.target !== overlay.querySelector('img')) close();
     });
@@ -339,7 +346,7 @@ window.initLightbox = function () {
       // Use original src (highest resolution available)
       overlay.querySelector('img').src = img.src;
       overlay.querySelector('img').alt = img.alt;
-      overlay.classList.remove('hidden');
+      overlay.classList.remove('hidden', 'closing');
     });
   });
 };
