@@ -1,297 +1,215 @@
 -- DwightAuto decomposition output
--- Request: We need to add the `sizes` attribute to the new image optimization feature. The max width of the notes is always 65ch. I would also love to have the ability to view the image full screen. So add a but
--- Timestamp: Sun 08 Mar 2026 05:25:34 PM CET
+-- Request: - [ ] **Configuration File:** Support for `kiln.yaml` to save preferences (flags) persistently, so you don't need to pass CLI flags on every [generate](./Commands/generate.md) run.
+-- Timestamp: Sun 08 Mar 2026 05:53:49 PM CET
 
-Now I have a complete picture. Let me produce the decomposition.
+Now I have a thorough understanding of the codebase. Let me design the decomposition.
+
+The key observations:
+1. The project uses `gopkg.in/yaml.v3` already (a dependency).
+2. Configuration is currently done via CLI flags in `internal/cli/commands.go` with global vars, and the `run*` functions copy flag values into `builder.*` package-level vars.
+3. The convention is package-per-domain, with `@feature:` pragmas on line 1.
+4. Tests use standard `testing` package with `t.TempDir()` for filesystem tests.
+5. The config file should be `kiln.yaml` and map to the same fields as CLI flags.
 
 <tasks>
-<task order="1" title="Add sizes attribute to picture and img elements">
-Modify the `writePicture` and `writeImage` functions in `internal/obsidian/markdown/wikilinks.go` to emit a `sizes` attribute on both `<source>` elements and the fallback `<img>` element. The notes content area has `max-width: 65ch`, so the sizes attribute should be `sizes="min(65ch, 100vw)"`.
+<task order="1" title="Config type and YAML loader">
+Create a new package `internal/config` that defines the `Config` struct and provides functions to load it from a `kiln.yaml` file.
 
-**Test first** — edit `internal/obsidian/markdown/picture_test.go`:
-1. In `TestWriteImage_WithVariants`, add a check that the output contains `sizes="min(65ch, 100vw)"`.
-2. In `TestWriteImage_WithAVIFAndWebP`, add a check that the output contains `sizes="min(65ch, 100vw)"`.
-3. In `TestWriteImage_NoVariants` (plain `<img>` fallback), verify the plain `<img>` does NOT get a `sizes` attribute (sizes only makes sense with srcset).
+**Files to create:**
 
-Run `go test ./internal/obsidian/markdown/...` — tests should FAIL because `sizes` is not emitted yet.
+1. `internal/config/config_test.go` — Tests first (TDD). Add `// @feature:cli` pragma on line 1. Write the following tests using standard `testing` package with `t.TempDir()`:
+   - `TestLoad_ValidFile`: Create a temp dir, write a `kiln.yaml` with all supported fields (theme, font, url, name, input, output, mode, layout, flat-urls, disable-toc, disable-local-graph, port, log), call `Load(path)`, assert each field is correctly parsed.
+   - `TestLoad_PartialFile`: Write a `kiln.yaml` with only `theme` and `url` set, call `Load(path)`, assert those fields are set and all others are zero values (empty string / false).
+   - `TestLoad_FileNotFound`: Call `Load` with a nonexistent path, assert it returns `nil, nil` (no file = no config, not an error — allows graceful fallback to defaults).
+   - `TestLoad_InvalidYAML`: Write a file with `:::bad yaml[[[`, call `Load`, assert non-nil error.
+   - `TestLoad_EmptyFile`: Write an empty file, call `Load`, assert returns a zero-valued `*Config` with no error.
 
-**Then implement** — edit `internal/obsidian/markdown/wikilinks.go`:
+2. `internal/config/config.go` — Implementation. Add `// @feature:cli Configuration file loading and type definitions` pragma on line 1. Define:
+   ```go
+   package config
 
-1. In `writePicture` (line ~357), after writing each `<source>` tag's `srcset`, also write ` sizes="min(65ch, 100vw)"` before the closing `>`. Specifically, change the `<source>` output from:
+   type Config struct {
+       Theme             string `yaml:"theme"`
+       Font              string `yaml:"font"`
+       URL               string `yaml:"url"`
+       Name              string `yaml:"name"`
+       Input             string `yaml:"input"`
+       Output            string `yaml:"output"`
+       Mode              string `yaml:"mode"`
+       Layout            string `yaml:"layout"`
+       FlatURLs          bool   `yaml:"flat-urls"`
+       DisableTOC        bool   `yaml:"disable-toc"`
+       DisableLocalGraph bool   `yaml:"disable-local-graph"`
+       Port              string `yaml:"port"`
+       Log               string `yaml:"log"`
+   }
+
+   // Load reads a kiln.yaml file from the given path.
+   // Returns (nil, nil) if the file does not exist (not an error).
+   // Returns (*Config, nil) on success.
+   // Returns (nil, error) on parse failure.
+   func Load(path string) (*Config, error)
    ```
-   <source type="..." srcset="...">
-   ```
-   to:
-   ```
-   <source type="..." srcset="..." sizes="min(65ch, 100vw)">
-   ```
+   Implementation: use `os.Open`, check `os.IsNotExist` to return `(nil, nil)`, otherwise `yaml.NewDecoder(f).Decode(&cfg)` (using `gopkg.in/yaml.v3`). Handle `io.EOF` from empty files by returning a zero-value Config.
 
-2. In the fallback `<img>` inside `writePicture`, also add `sizes="min(65ch, 100vw)"` before `loading="lazy"`.
-
-The `writeImage` plain `<img>` fallback (no variants case) should NOT get a sizes attribute since it has no srcset.
-
-Run `go test ./internal/obsidian/markdown/...` — all tests should PASS.
-
-Verify: `go test ./internal/obsidian/markdown/...`
+**Verify:** `go test ./internal/config/...`
 </task>
 
-<task order="2" title="Wrap images in figure with expand button">
-Modify the image rendering in `internal/obsidian/markdown/wikilinks.go` to wrap every image (both `<picture>` and plain `<img>`) in a `<figure class="img-figure">` container that includes an expand button.
+<task order="2" title="Config discovery with FindFile">
+Add a function to locate `kiln.yaml` in the current directory (or a given directory), and add a helper to merge config values with CLI flag defaults.
 
-**Test first** — edit `internal/obsidian/markdown/picture_test.go`. The file already contains these test functions from the original code and task 1:
-- `TestWriteImage_WithVariants`
-- `TestWriteImage_NoVariants`
-- `TestWriteImage_WithAVIFAndWebP`
-- `TestWriteImage_NilResults`
+**Files to edit:**
 
-Update the existing tests:
-1. In `TestWriteImage_WithVariants`, add checks for `<figure class="img-figure">`, `</figure>`, and `<button class="img-expand-btn"`.
-2. In `TestWriteImage_NoVariants`, add checks for `<figure class="img-figure">` and `<button class="img-expand-btn"` (the plain `<img>` fallback should also be wrapped).
-3. In `TestWriteImage_NilResults`, add checks for `<figure class="img-figure">` and `<button class="img-expand-btn"`.
+1. `internal/config/config_test.go` — Add these additional tests (the file already has 5 tests from task 1):
+   - `TestFindFile_Exists`: Create a temp dir, write `kiln.yaml` in it, call `FindFile(dir)`, assert it returns the correct path and no error.
+   - `TestFindFile_NotFound`: Call `FindFile` on an empty temp dir, assert it returns `""` and no error.
+   - `TestApplyIfEmpty_OnlyOverridesEmpty`: Create a `Config{Theme: "dracula", Font: ""}`, call `cfg.ValueOr("theme", "default")`, assert returns `"dracula"`. Call `cfg.ValueOr("font", "inter")`, assert returns `"inter"`. This tests that config values take precedence over defaults when set, but defaults apply when config values are empty.
 
-Run `go test ./internal/obsidian/markdown/...` — tests should FAIL.
+2. `internal/config/config.go` — Add the following functions (file already has `Config` struct and `Load` from task 1):
+   ```go
+   // DefaultFilename is the conventional name for the config file.
+   const DefaultFilename = "kiln.yaml"
 
-**Then implement** — edit `internal/obsidian/markdown/wikilinks.go`:
+   // FindFile looks for kiln.yaml in the given directory.
+   // Returns the full path if found, or "" if not present.
+   // Returns an error only for filesystem errors (not for missing file).
+   func FindFile(dir string) (string, error)
 
-1. Modify `writeImage` (line ~334) to wrap ALL output in a `<figure class="img-figure">...</figure>`. After the image (`<picture>` or plain `<img>`), add an expand button:
-   ```html
-   <figure class="img-figure">
-     [existing <picture> or <img> output]
-     <button class="img-expand-btn" aria-label="View full size" type="button">
-       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-     </button>
-   </figure>
+   // ValueOr returns the config string field if non-empty, otherwise the fallback.
+   func (c *Config) ValueOr(field, fallback string) string
+
+   // BoolOr returns the config bool field if the config is non-nil, otherwise the fallback.
+   func (c *Config) BoolOr(field string, fallback bool) bool
    ```
+   - `FindFile`: use `os.Stat(filepath.Join(dir, DefaultFilename))`, return path if exists, `""` if `os.IsNotExist`.
+   - `ValueOr`: switch on field name (matching yaml tag names: "theme", "font", "url", "name", "input", "output", "mode", "layout", "port", "log"), return the struct field if non-empty, else fallback.
+   - `BoolOr`: same pattern for bool fields ("flat-urls", "disable-toc", "disable-local-graph").
 
-The approach: `writeImage` opens `<figure>`, delegates to either `writePicture` or plain `<img>` rendering, writes the expand button, then closes `</figure>`.
-
-Run `go test ./internal/obsidian/markdown/...` — all tests should PASS.
-
-Verify: `go test ./internal/obsidian/markdown/...`
+**Verify:** `go test ./internal/config/...`
 </task>
 
-<task order="3" title="Add lightbox overlay CSS to shared.css">
-Add CSS for the image lightbox overlay and expand button to `assets/shared.css`. This file already has image styles at line ~465 (`.content img`) and a search overlay pattern starting at line ~825 that we can follow for the lightbox overlay.
+<task order="3" title="Wire config into generate command">
+Integrate `kiln.yaml` loading into the `generate` CLI command so that config file values act as defaults that CLI flags can override. The precedence is: CLI flag (if explicitly set) > kiln.yaml value > hardcoded default.
 
-**No Go tests needed for CSS** — this is purely a styling task.
+**Files to edit:**
 
-Edit `assets/shared.css` and add the following styles at the end of the MARKDOWN section (after line ~468, the `.content img` block):
+1. `internal/cli/generate.go` — This file currently defines `cmdGenerate`, registers flags in `init()`, and has `runGenerate` that copies flag vars to `builder.*` globals. Modify `runGenerate` to:
+   - At the start of `runGenerate`, call `config.FindFile(".")` to discover `kiln.yaml`.
+   - If found, call `config.Load(path)` to parse it. Log a debug message on success, log a warning on error (but don't abort — fall back to defaults).
+   - For each flag, use Cobra's `cmd.Flags().Changed("flagname")` to check if the user explicitly set it on the command line. If the flag was NOT explicitly changed by the user, AND the config file has a non-empty value for that field, use the config value instead.
+   - Implement this with a helper pattern: for string flags, `if !cmd.Flags().Changed(FlagTheme) { themeName = cfg.ValueOr("theme", DefaultThemeName) }`, and similarly for bool flags using `BoolOr`.
+   - The rest of `runGenerate` (copying to `builder.*` globals and calling `builder.Build`) stays the same.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-```css
-/* Image figure wrapper */
-.img-figure {
-  position: relative;
-  margin: 0;
-  display: inline-block;
-  max-width: 100%;
-}
+2. `internal/cli/generate.go` — Also add a `log` output line (using `slog`) indicating when a config file is loaded, e.g. `log.Info("Loaded configuration", "file", path)` so users get feedback.
 
-.img-expand-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 4px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-}
+**Do NOT edit any other command files in this task** — only `generate.go`. Other commands (serve, clean, etc.) will be wired in the next task.
 
-.img-figure:hover .img-expand-btn {
-  opacity: 1;
-}
-
-/* Image lightbox overlay */
-#img-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.9);
-  cursor: zoom-out;
-}
-
-#img-lightbox.hidden {
-  display: none;
-}
-
-#img-lightbox img {
-  max-width: 95vw;
-  max-height: 95vh;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-#img-lightbox-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  z-index: 10001;
-  transition: background 0.2s;
-}
-
-#img-lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-```
-
-Verify: `go test ./...` (ensures no build breakage)
+**Verify:** `go build ./cmd/kiln/` (ensures it compiles). Then `go test ./...` to ensure no regressions.
 </task>
 
-<task order="4" title="Add lightbox JavaScript to both app.js files">
-Add the lightbox JavaScript initialization function and wire it into both layout JS files. The lightbox will:
-1. Create the overlay DOM element on first call
-2. Listen for clicks on `.img-expand-btn` buttons
-3. Show the clicked image at full resolution in the overlay
-4. Close on overlay click, close button click, or Escape key
+<task order="4" title="Wire config into serve and clean commands">
+Integrate `kiln.yaml` loading into the `serve` and `clean` commands, following the exact same pattern established in task 3 for `generate`.
 
-**Edit `assets/default_app.js`** — add a new function `window.initLightbox` before the `window.initAll` function (before line ~311). Then add `window.initLightbox();` call inside `window.initAll` (line ~311).
+**Files to edit:**
 
-**Edit `assets/simple_app.js`** — add the same `window.initLightbox` function before `window.initAll` (before line ~262). Then add `window.initLightbox();` call inside `window.initAll` (line ~262).
+1. `internal/cli/serve.go` — This file defines `cmdServe` with flags for `port`, `output`, and `log`. Modify `runServe` to:
+   - At the start, call `config.FindFile(".")` and `config.Load(path)` (same pattern as generate).
+   - For each flag (`port`, `output`, `log`), check `cmd.Flags().Changed(flagName)`. If not changed, use the config value via `cfg.ValueOr(...)`.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-The `initLightbox` function:
+2. `internal/cli/clean.go` — This file defines `cmdClean` with flags for `output` and `log`. Modify `runClean` to:
+   - Same pattern: discover config, load it, apply non-overridden values.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-```javascript
-window.initLightbox = function () {
-  // Create overlay once
-  if (!document.getElementById('img-lightbox')) {
-    const overlay = document.createElement('div');
-    overlay.id = 'img-lightbox';
-    overlay.className = 'hidden';
-    overlay.innerHTML = '<button id="img-lightbox-close" type="button" aria-label="Close">&times;</button><img src="" alt="">';
-    document.body.appendChild(overlay);
+3. `internal/cli/doctor.go` — This file defines `cmdDoctor` with flags for `input` and `log`. Modify `runDoctor` to:
+   - Same pattern.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-    const close = () => overlay.classList.add('hidden');
-    overlay.addEventListener('click', (e) => {
-      if (e.target !== overlay.querySelector('img')) close();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close();
-    });
-  }
+4. `internal/cli/stats.go` — This file defines `cmdStats` with flags for `input` and `log`. Modify `runStats` to:
+   - Same pattern.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-  // Bind expand buttons (idempotent via data attribute)
-  document.querySelectorAll('.img-expand-btn').forEach((btn) => {
-    if (btn.dataset.lightboxBound) return;
-    btn.dataset.lightboxBound = '1';
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const figure = btn.closest('.img-figure');
-      const img = figure.querySelector('img');
-      if (!img) return;
-      const overlay = document.getElementById('img-lightbox');
-      // Use original src (highest resolution available)
-      overlay.querySelector('img').src = img.src;
-      overlay.querySelector('img').alt = img.alt;
-      overlay.classList.remove('hidden');
-    });
-  });
-};
-```
+5. `internal/cli/init.go` — This file defines `cmdInit` with flags for `input` and `log`. Modify `runInit` to:
+   - Same pattern.
+   - Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-The lightbox uses the original `<img src="...">` which is the full-resolution original image (the `<picture>` fallback). This gives users the high-res view they want.
+For all commands, the logic is: if `FindFile` returns a path, load the config. If loading fails, log a warning and continue with defaults. For each flag, only apply config values when the flag was not explicitly set by the user.
 
-Verify: `go test ./...`
+**Verify:** `go build ./cmd/kiln/` and `go test ./...`
 </task>
 
-<task order="5" title="Verify full pipeline with integration test">
-Add an integration-style test in `internal/obsidian/markdown/picture_test.go` that verifies the complete rendered output for a `<picture>` element includes all three new features working together: `sizes` attribute, `<figure>` wrapper, and expand button.
+<task order="5" title="Refactor config loading into shared helper">
+The config-loading boilerplate added in tasks 3 and 4 is now duplicated across 6 command files. Refactor it into a single shared helper in `internal/cli/commands.go` to keep the code DRY.
 
-**Edit `internal/obsidian/markdown/picture_test.go`**. The file already has these functions from prior tasks:
-- `TestWriteImage_WithVariants` (checks sizes, figure, button)
-- `TestWriteImage_NoVariants` (checks figure, button)
-- `TestWriteImage_WithAVIFAndWebP` (checks sizes, format ordering)
-- `TestWriteImage_NilResults` (checks figure, button)
+**Files to edit:**
 
-Add a new test `TestWriteImage_FullOutputStructure` that verifies the complete HTML structure of the output:
+1. `internal/cli/commands.go` — This file already has constants, flag name definitions, and global vars. Add:
+   ```go
+   // loadConfig discovers and loads kiln.yaml from the current directory.
+   // Returns a non-nil Config (possibly zero-valued) that is safe to call methods on.
+   // Logs a message when a config file is found and loaded.
+   func loadConfig(cmd *cobra.Command) *config.Config
+   ```
+   Implementation:
+   - Call `config.FindFile(".")`. If path is empty, return `&config.Config{}`.
+   - Call `config.Load(path)`. If error, log warning, return `&config.Config{}`.
+   - Return the loaded config.
+   
+   Also add a helper to apply config values for common flag patterns:
+   ```go
+   // applyStringFlag sets the target variable to the config value if the CLI flag was not explicitly set.
+   func applyStringFlag(cmd *cobra.Command, flagName string, target *string, cfg *config.Config, defaultVal string)
+   
+   // applyBoolFlag sets the target variable to the config value if the CLI flag was not explicitly set.
+   func applyBoolFlag(cmd *cobra.Command, flagName string, target *bool, cfg *config.Config, defaultVal bool)
+   ```
+   Add import for `"github.com/otaleghani/kiln/internal/config"`.
 
-```go
-func TestWriteImage_FullOutputStructure(t *testing.T) {
-    r := &IndexResolver{
-        ImageResults: map[string]*imgopt.Result{
-            "/img/hero.png": {
-                Original: "/img/hero.png",
-                Variants: []imgopt.Variant{
-                    {Width: 1200, Format: "avif", WebPath: "/img/hero-1200w.avif"},
-                    {Width: 800, Format: "avif", WebPath: "/img/hero-800w.avif"},
-                    {Width: 1200, Format: "webp", WebPath: "/img/hero-1200w.webp"},
-                    {Width: 800, Format: "webp", WebPath: "/img/hero-800w.webp"},
-                    {Width: 1200, Format: "png", WebPath: "/img/hero-1200w.png"},
-                    {Width: 800, Format: "png", WebPath: "/img/hero-800w.png"},
-                },
-            },
-        },
-    }
+2. `internal/cli/generate.go` — Replace the inline config-loading code added in task 3 with calls to `loadConfig(cmd)`, `applyStringFlag(...)`, and `applyBoolFlag(...)`. The `runGenerate` function should become much shorter.
 
-    var buf bytes.Buffer
-    w := bufio.NewWriter(&buf)
-    r.writeImage(w, "/img/hero.png", []byte("Hero image"), nil)
-    w.Flush()
-    out := buf.String()
+3. `internal/cli/serve.go` — Same refactor: replace inline config code with helper calls.
 
-    // Verify structural order: figure > picture > sources > img > button > /figure
-    checks := []struct{ name, substr string }{
-        {"figure open", `<figure class="img-figure">`},
-        {"picture open", `<picture>`},
-        {"avif source with sizes", `<source type="image/avif" srcset="` },
-        {"sizes on source", `sizes="min(65ch, 100vw)"`},
-        {"webp source", `<source type="image/webp"`},
-        {"png source", `<source type="image/png"`},
-        {"fallback img", `<img src="/img/hero.png"`},
-        {"picture close", `</picture>`},
-        {"expand button", `<button class="img-expand-btn"`},
-        {"figure close", `</figure>`},
-    }
+4. `internal/cli/clean.go` — Same refactor.
 
-    for _, c := range checks {
-        if !strings.Contains(out, c.substr) {
-            t.Errorf("%s: missing %q\ngot: %s", c.name, c.substr, out)
-        }
-    }
+5. `internal/cli/doctor.go` — Same refactor.
 
-    // Verify ordering: figure before picture before button before /figure
-    figureIdx := strings.Index(out, `<figure`)
-    pictureIdx := strings.Index(out, `<picture>`)
-    buttonIdx := strings.Index(out, `<button class="img-expand-btn"`)
-    closeFigureIdx := strings.Index(out, `</figure>`)
+6. `internal/cli/stats.go` — Same refactor.
 
-    if figureIdx >= pictureIdx {
-        t.Error("figure must come before picture")
-    }
-    if pictureIdx >= buttonIdx {
-        t.Error("picture must come before button")
-    }
-    if buttonIdx >= closeFigureIdx {
-        t.Error("button must come before closing figure")
-    }
-}
-```
+7. `internal/cli/init.go` — Same refactor.
 
-Run `go test ./internal/obsidian/markdown/...` — all tests should PASS (implementation was done in tasks 1-2).
+**Verify:** `go build ./cmd/kiln/` and `go test ./...`
+</task>
 
-Then run the full test suite: `go test ./...`
+<task order="6" title="Integration test and kiln init config scaffolding">
+Add an integration test that verifies the full config file flow end-to-end, and optionally scaffold a `kiln.yaml` during `kiln init`.
 
-Verify: `go test ./...`
+**Files to create/edit:**
+
+1. `internal/config/config_integration_test.go` — Create this file with `// @feature:cli Integration tests for config file loading` pragma. Write:
+   - `TestConfigIntegration_FullPipeline`: Create a temp dir, write a `kiln.yaml` with `theme: dracula`, `font: lato`, `url: https://example.com`. Call `FindFile(dir)`, assert path found. Call `Load(path)`, assert `cfg.Theme == "dracula"`, `cfg.Font == "lato"`, `cfg.URL == "https://example.com"`. Call `cfg.ValueOr("theme", "default")`, assert returns `"dracula"` (config wins). Call `cfg.ValueOr("mode", "default")`, assert returns `"default"` (fallback wins for unset field).
+   - `TestConfigIntegration_BoolFields`: Write a `kiln.yaml` with `flat-urls: true`, `disable-toc: true`. Load and verify `cfg.FlatURLs == true`, `cfg.DisableTOC == true`, `cfg.DisableLocalGraph == false`. Verify `cfg.BoolOr("flat-urls", false)` returns `true`, `cfg.BoolOr("disable-local-graph", false)` returns `false`.
+
+2. `internal/cli/init.go` — After the vault directory and welcome note are created successfully in `runInit`, also create a minimal `kiln.yaml` in the current directory (not inside the vault). The content should be:
+   ```yaml
+   # Kiln configuration file
+   # Uncomment and edit the options below to set defaults for your project.
+   # CLI flags will override these values.
+   
+   # theme: default
+   # font: inter
+   # url: ""
+   # name: "My Notes"
+   # input: ./vault
+   # output: ./public
+   # mode: default
+   # layout: default
+   # flat-urls: false
+   # disable-toc: false
+   # disable-local-graph: false
+   ```
+   Use `os.WriteFile` to write it. Check if `kiln.yaml` already exists before writing (don't overwrite). Log an info message like `"Created kiln.yaml configuration file"`.
+
+**Verify:** `go test ./internal/config/...` and `go build ./cmd/kiln/`
 </task>
 </tasks>

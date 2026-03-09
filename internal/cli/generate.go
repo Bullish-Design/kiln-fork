@@ -45,8 +45,20 @@ func init() {
 
 // runGenerate executes the build logic.
 func runGenerate(cmd *cobra.Command, args []string) {
-	// Apply overrides
-	// If the user specified custom directories via flags, update the builder configuration.
+	cfg := loadConfig(cmd)
+	applyStringFlag(cmd, FlagTheme, &themeName, cfg, DefaultThemeName)
+	applyStringFlag(cmd, FlagFont, &fontName, cfg, DefaultFontName)
+	applyStringFlag(cmd, FlagUrl, &baseURL, cfg, DefaultBaseURL)
+	applyStringFlag(cmd, FlagSiteName, &siteName, cfg, DefaultSiteName)
+	applyStringFlag(cmd, FlagInputDir, &inputDir, cfg, DefaultInputDir)
+	applyStringFlag(cmd, FlagOutputDir, &outputDir, cfg, DefaultOutputDir)
+	applyStringFlag(cmd, FlagMode, &mode, cfg, DefaultMode)
+	applyStringFlag(cmd, FlagLayout, &layout, cfg, DefaultLayout)
+	applyStringFlag(cmd, FlagLog, &logger, cfg, DefaultLog)
+	applyBoolFlag(cmd, FlagFlatURLS, &flatUrls, cfg, DefaultFlatURLS)
+	applyBoolFlag(cmd, FlagDisableTOC, &disableTOC, cfg, DefaultDisableTOC)
+	applyBoolFlag(cmd, FlagDisableLocalGraph, &disableLocalGraph, cfg, DefaultDisableLocalGraph)
+
 	builder.OutputDir = outputDir
 	builder.InputDir = inputDir
 	builder.FlatUrls = flatUrls
@@ -60,7 +72,5 @@ func runGenerate(cmd *cobra.Command, args []string) {
 	builder.DisableLocalGraph = disableLocalGraph
 
 	log := getLogger()
-
-	// Trigger the build
 	builder.Build(log)
 }

@@ -1,11 +1,11 @@
 ---
 title: "Init Command — Scaffold a New Kiln Project"
-description: "Use kiln init to create a new Obsidian vault structure ready for static site generation. Get started with Kiln in seconds."
+description: "Use kiln init to scaffold a new Obsidian vault and configuration file ready for static site generation. Get started with Kiln in seconds."
 ---
 
 # Init Command
 
-The `init` command creates a new Obsidian vault directory pre-configured for Kiln. It scaffolds the folder structure and a starter note so you can begin writing content and generating your site immediately. This is the recommended first step if you are starting a fresh project after [installing Kiln](../Installation.md).
+The `init` command creates a new Obsidian vault directory pre-configured for Kiln. It scaffolds the folder structure, a starter note, and a `kiln.yaml` [configuration file](../Configuration File.md) so you can begin writing content and generating your site immediately. This is the recommended first step if you are starting a fresh project after [installing Kiln](../Installation.md).
 
 ## Usage
 
@@ -24,11 +24,13 @@ kiln init --input my-notes
 Running `init` generates the following structure:
 
 ```
+kiln.yaml
 vault/
 └── Home.md
 ```
 
-The `Home.md` file contains a welcome note with a heading and a prompt to run your first build. This file becomes the homepage of your generated site.
+- **`kiln.yaml`** — A [configuration file](../Configuration File.md) with all available options commented out. Uncomment and edit values to set project-wide defaults instead of passing flags on every command. CLI flags always override config values. If a `kiln.yaml` already exists in the current directory, it is left untouched.
+- **`vault/Home.md`** — A welcome note with a heading and a prompt to run your first build. This file becomes the homepage of your generated site.
 
 If a directory with the target name already exists, `init` exits with an error to prevent accidentally overwriting your content.
 
