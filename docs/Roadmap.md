@@ -30,11 +30,11 @@ These features were on the roadmap and have since been shipped:
 ## UI & UX Improvements
 *Enhancing the reading and navigation experience.*
 
-- [ ] **Page Transitions:** Smooth View Transitions API support to complement the existing [client-side navigation](./Features/Navigation/Client Side Navigation.md).
-- [ ] **Link Previews:** Obsidian-style hover previews when mousing over [wikilinks](./Features/Navigation/Wikilinks.md).
+- [x] **Page Transitions:** Smooth View Transitions API support to complement the existing [client-side navigation](./Features/Navigation/Client Side Navigation.md).
+- [x] **Link Previews:** Obsidian-style hover previews when mousing over [wikilinks](./Features/Navigation/Wikilinks.md).
 - [x] **Full-Text Search:** Fuzzy finder with content search to go beyond the current name-based [search](./Features/Navigation/Search.md).
 - [ ] **Navigation Enhancements:** "Back to Top" buttons and improved breadcrumb trails.
-- [ ] **Animations:** Subtle CSS animations for interactive elements.
+- [x] **Animations:** Subtle CSS animations for interactive elements.
 - [ ] **Canvas Colors:** Custom color support for [Canvas](./Features/Rendering/Obsidian Canvas.md) nodes.
 
 ## Content Management
