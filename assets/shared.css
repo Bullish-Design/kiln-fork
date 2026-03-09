@@ -1083,3 +1083,15 @@ details.callout[open] > summary .callout-title::after {
 #kiln-main {
   animation: kiln-fade-in 200ms ease-out;
 }
+
+/* Simple layout panel animations */
+#menu-wrapper:not(.hidden):not(.closing),
+#toc-wrapper:not(.hidden):not(.closing),
+#local-graph-wrapper:not(.hidden):not(.closing) {
+  animation: kiln-fade-in 150ms ease-out;
+}
+#menu-wrapper.closing,
+#toc-wrapper.closing,
+#local-graph-wrapper.closing {
+  animation: kiln-fade-out 120ms ease-in forwards;
+}

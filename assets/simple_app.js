@@ -24,11 +24,31 @@ window._panels = [
   { btn: "toc-button", wrapper: "toc-wrapper", icon: "toc-icon" },
 ];
 
-// Close a single panel by looking up its current DOM elements.
+// Close a single panel instantly (no animation), used during htmx navigation.
+window._closePanelInstant = function (panel) {
+  var wrapper = document.getElementById(panel.wrapper);
+  var icon = document.getElementById(panel.icon);
+  if (wrapper) {
+    wrapper.classList.add("hidden");
+    wrapper.classList.remove("closing");
+  }
+  if (icon) {
+    icon.classList.remove("text-accent");
+    icon.classList.add("text-foreground");
+  }
+};
+
+// Close a single panel with fade-out animation.
 window._closePanel = function (panel) {
-  const wrapper = document.getElementById(panel.wrapper);
-  const icon = document.getElementById(panel.icon);
-  if (wrapper) wrapper.classList.add("hidden");
+  var wrapper = document.getElementById(panel.wrapper);
+  var icon = document.getElementById(panel.icon);
+  if (!wrapper || wrapper.classList.contains("hidden")) return;
+  wrapper.classList.add("closing");
+  wrapper.addEventListener("animationend", function handler() {
+    wrapper.removeEventListener("animationend", handler);
+    wrapper.classList.add("hidden");
+    wrapper.classList.remove("closing");
+  }, { once: true });
   if (icon) {
     icon.classList.remove("text-accent");
     icon.classList.add("text-foreground");
@@ -44,7 +64,12 @@ window._togglePanel = function (panel) {
   const icon = document.getElementById(panel.icon);
   if (!wrapper) return;
   const opening = wrapper.classList.contains("hidden");
-  wrapper.classList.toggle("hidden");
+  if (opening) {
+    wrapper.classList.remove("hidden", "closing");
+  } else {
+    window._closePanel(panel);
+    return;
+  }
   if (icon) {
     icon.classList.toggle("text-accent", opening);
     icon.classList.toggle("text-foreground", !opening);
@@ -320,7 +345,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.addEventListener("htmx:afterSwap", () => {
   // Close all panels on navigation
-  window._panels.forEach((p) => window._closePanel(p));
+  window._panels.forEach((p) => window._closePanelInstant(p));
   window.initAll();
 });
 
