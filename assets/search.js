@@ -142,7 +142,7 @@
 
   function showOverlay() {
     var overlay = getOverlay();
-    overlay.classList.remove("hidden");
+    overlay.classList.remove("hidden", "closing");
     var input = document.getElementById("search-modal-input");
     if (input) {
       input.value = "";
@@ -153,7 +153,13 @@
 
   function hideOverlay() {
     var overlay = document.getElementById("search-overlay");
-    if (overlay) overlay.classList.add("hidden");
+    if (!overlay || overlay.classList.contains("hidden")) return;
+    overlay.classList.add("closing");
+    overlay.addEventListener("animationend", function handler() {
+      overlay.removeEventListener("animationend", handler);
+      overlay.classList.add("hidden");
+      overlay.classList.remove("closing");
+    }, { once: true });
   }
 
   function showResults(results, query) {

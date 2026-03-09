@@ -903,6 +903,10 @@ details.callout[open] > summary .callout-title::after {
   justify-content: center;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(2px);
+  animation: kiln-fade-in 150ms ease-out;
+}
+#search-overlay.closing {
+  animation: kiln-fade-out 120ms ease-in forwards;
 }
 #search-overlay.hidden {
   display: none;
@@ -918,6 +922,7 @@ details.callout[open] > summary .callout-title::after {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: kiln-scale-in 150ms ease-out;
 }
 #search-modal-input {
   width: 100%;
