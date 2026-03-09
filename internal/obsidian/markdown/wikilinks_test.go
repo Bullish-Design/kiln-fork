@@ -231,3 +231,118 @@ func TestFindFile_StripsMdExtension(t *testing.T) {
 		t.Errorf("expected %+v, got %+v", expected, file)
 	}
 }
+
+func TestResolveMarkdownLink(t *testing.T) {
+	tests := []struct {
+		name          string
+		currentSource string
+		dest          string
+		want          string
+	}{
+		{
+			name:          "relative sibling link",
+			currentSource: "/folder/current",
+			dest:          "./sibling.md",
+			want:          "/folder/sibling",
+		},
+		{
+			name:          "parent traversal link",
+			currentSource: "/folder/current",
+			dest:          "../other/note.md",
+			want:          "/other/note",
+		},
+		{
+			name:          "absolute path",
+			currentSource: "/folder/current",
+			dest:          "/folder/note.md",
+			want:          "/folder/note",
+		},
+		{
+			name:          "external URL https",
+			currentSource: "/folder/current",
+			dest:          "https://example.com",
+			want:          "https://example.com",
+		},
+		{
+			name:          "anchor-only link",
+			currentSource: "/folder/current",
+			dest:          "#heading",
+			want:          "#heading",
+		},
+		{
+			name:          "relative link with anchor",
+			currentSource: "/folder/current",
+			dest:          "./note.md#heading",
+			want:          "/folder/note#heading",
+		},
+		{
+			name:          "non-md file",
+			currentSource: "/folder/current",
+			dest:          "./image.png",
+			want:          "/folder/image.png",
+		},
+		{
+			name:          "external URL http",
+			currentSource: "/folder/current",
+			dest:          "http://example.com/page",
+			want:          "http://example.com/page",
+		},
+		{
+			name:          "mailto link",
+			currentSource: "/folder/current",
+			dest:          "mailto:user@example.com",
+			want:          "mailto:user@example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newTestResolver(map[string][]*obsidian.File{})
+			r.CurrentSource = tt.currentSource
+
+			got := r.ResolveMarkdownLink(tt.dest)
+			if got != tt.want {
+				t.Errorf("ResolveMarkdownLink(%q) = %q, want %q", tt.dest, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveMarkdownLink_RecordsGraphLink(t *testing.T) {
+	r := newTestResolver(map[string][]*obsidian.File{})
+	r.CurrentSource = "/folder/current"
+
+	r.ResolveMarkdownLink("./sibling.md")
+
+	if len(r.Links) != 1 {
+		t.Fatalf("expected 1 graph link, got %d", len(r.Links))
+	}
+	if r.Links[0].Source != "/folder/current" {
+		t.Errorf("expected source '/folder/current', got %q", r.Links[0].Source)
+	}
+	if r.Links[0].Target != "/folder/sibling" {
+		t.Errorf("expected target '/folder/sibling', got %q", r.Links[0].Target)
+	}
+}
+
+func TestResolveMarkdownLink_NoGraphLinkForExternal(t *testing.T) {
+	r := newTestResolver(map[string][]*obsidian.File{})
+	r.CurrentSource = "/folder/current"
+
+	r.ResolveMarkdownLink("https://example.com")
+
+	if len(r.Links) != 0 {
+		t.Errorf("expected no graph links for external URL, got %d", len(r.Links))
+	}
+}
+
+func TestResolveMarkdownLink_NoGraphLinkForAnchor(t *testing.T) {
+	r := newTestResolver(map[string][]*obsidian.File{})
+	r.CurrentSource = "/folder/current"
+
+	r.ResolveMarkdownLink("#heading")
+
+	if len(r.Links) != 0 {
+		t.Errorf("expected no graph links for anchor-only link, got %d", len(r.Links))
+	}
+}

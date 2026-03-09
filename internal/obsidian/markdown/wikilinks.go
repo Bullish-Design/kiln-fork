@@ -3,6 +3,7 @@ package markdown
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"errors"
@@ -282,6 +283,50 @@ func (r *IndexResolver) extractNodes(root ast.Node, source []byte, fragment stri
 	return nil
 }
 
+// ResolveMarkdownLink resolves a standard markdown link destination against
+// the current file's location. External URLs, mailto links, and anchor-only
+// links are returned unchanged. Relative paths are resolved against
+// CurrentSource's directory, .md extensions are stripped, and the result is
+// slugified for clean URLs.
+func (r *IndexResolver) ResolveMarkdownLink(dest string) string {
+	// External links: return as-is
+	if strings.HasPrefix(dest, "http://") ||
+		strings.HasPrefix(dest, "https://") ||
+		strings.HasPrefix(dest, "mailto:") {
+		return dest
+	}
+
+	// Anchor-only links: return as-is
+	if strings.HasPrefix(dest, "#") {
+		return dest
+	}
+
+	// Separate anchor fragment
+	anchor := ""
+	if idx := strings.Index(dest, "#"); idx != -1 {
+		anchor = dest[idx:]
+		dest = dest[:idx]
+	}
+
+	// Resolve relative paths against current source's directory
+	if strings.HasPrefix(dest, "./") || strings.HasPrefix(dest, "../") {
+		dir := path.Dir(r.CurrentSource)
+		dest = path.Clean(dir + "/" + dest)
+	}
+
+	// Strip .md extension for clean URLs
+	if strings.HasSuffix(dest, ".md") {
+		dest = strings.TrimSuffix(dest, ".md")
+	}
+
+	dest = slugify(dest)
+
+	// Record graph link for internal destinations
+	r.recordGraphLink(dest)
+
+	return dest + anchor
+}
+
 // renderLink writes the HTML for standard markdown links.
 func (r *IndexResolver) renderLink(
 	w util.BufWriter,
@@ -291,10 +336,10 @@ func (r *IndexResolver) renderLink(
 ) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
 	if entering {
-		newDest := string(n.Destination)
+		newDest := r.ResolveMarkdownLink(string(n.Destination))
 
 		w.WriteString("<a href=\"")
-		w.WriteString(slugify(newDest))
+		w.WriteString(newDest)
 		w.WriteString("\"")
 		if n.Title != nil {
 			w.WriteString(" title=\"")
@@ -319,7 +364,7 @@ func (r *IndexResolver) renderImage(
 		return ast.WalkSkipChildren, nil
 	}
 	n := node.(*ast.Image)
-	newDest := string(n.Destination)
+	newDest := r.ResolveMarkdownLink(string(n.Destination))
 
 	// Use the helper
 	r.writeImage(w, newDest, n.Text(source), n.Title)
