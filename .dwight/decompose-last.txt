@@ -1,200 +1,205 @@
 -- DwightAuto decomposition output
--- Request: Create an automatic RSS feed generation for blog-style vaults, making it easy for readers to subscribe.
--- Timestamp: Mon 09 Mar 2026 05:14:46 PM CET
+-- Request: We need to fix a problem with links. Right now kiln supports only wikilinks. We need to support event other kinds of links, like relative markdown links for example.
+-- Timestamp: Mon 09 Mar 2026 06:40:45 PM CET
 
-I now have a complete understanding. Here's my decomposition:
+Now I have a thorough understanding of the codebase. Let me analyze what needs to change:
+
+**Current state:**
+1. **Vault scanning** (`obsidian.go:211-229`): Only extracts wikilinks `[[...]]` using `wikilinkRegex`. Standard markdown links `[text](url)` are NOT extracted into `File.Links`.
+2. **Markdown rendering** (`wikilinks.go:286-309`): The `renderLink` method handles standard markdown links but just passes the destination through `slugify()` without resolving relative paths against the file index.
+3. **Backlink generation** (`obsidian.go:255-322`): Only processes wikilink-format strings (`[[...]]`).
+4. **Linter** (`linter.go`): Only checks wikilinks.
+5. **Graph links**: Only collected from wikilink resolution.
+
+**What needs to change:**
+1. Extract standard markdown links during vault scan
+2. Resolve relative markdown links (`./sibling.md`, `../parent/note.md`) to correct web paths during rendering  
+3. Make backlinks work with both link formats
+4. Update the linter to also check standard markdown links
+5. Collect graph links from standard markdown links too
 
 <tasks>
-<task order="1" title="RSS package: types, builder, and tests">
-Create a new `internal/rss/` package with RSS 2.0 feed generation logic, following the same pattern as `internal/search/search.go` and `internal/jsonld/jsonld.go`.
+<task order="1" title="Extract markdown links during vault scan">
+The vault scanner in `internal/obsidian/obsidian.go` currently only extracts wikilinks using `wikilinkRegex`. We need to also extract standard markdown links like `[text](./path.md)` or `[text](relative/path.md)` during the `processMarkdown()` method.
 
-**Files to create:**
+**What to do:**
 
-1. `internal/rss/rss.go` — Add `// @feature:rss RSS 2.0 feed generation for blog-style vaults.` on line 1.
+1. **Write tests first** in a new file `internal/obsidian/obsidian_links_test.go`:
+   - Add `// @feature:vault-scan` pragma on line 1
+   - Test that `processMarkdown()` extracts standard markdown links into `File.Links`
+   - Test cases:
+     - `[text](./sibling.md)` → extracted into Links
+     - `[text](../parent/note.md)` → extracted into Links
+     - `[text](folder/note.md)` → extracted into Links
+     - `[text](https://example.com)` → NOT extracted (external links should be skipped)
+     - `[text](#heading)` → NOT extracted (pure anchor links should be skipped)
+     - `![alt](image.png)` → extracted into Embeds (markdown images)
+     - Mixed wikilinks and markdown links both extracted correctly
+   - Since `processMarkdown()` reads from `f.Path` via `os.ReadFile`, create temp files for testing, or extract the body parsing into a testable helper
 
-Define these types and functions:
+2. **Add a new regex** in `internal/obsidian/obsidian.go` alongside the existing `wikilinkRegex` (around line 24-31):
+   ```go
+   mdLinkRegex = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)]+)\)`)
+   ```
+   This captures: group 1 = optional `!` (embed/image), group 2 = link text, group 3 = URL/path
 
-```go
-package rss
+3. **Update `processMarkdown()`** in `internal/obsidian/obsidian.go` (around line 209-229):
+   - After the existing wikilink extraction block, add a second block that uses `mdLinkRegex`
+   - For each match:
+     - Skip external links (starts with `http://`, `https://`, `mailto:`, etc.)
+     - Skip pure anchor links (starts with `#`)
+     - If the prefix is `!` (image), add to `f.Embeds` and `f.Links` (same pattern as wikilink embeds)
+     - Otherwise add to `f.Links`
+   - Store the markdown link in a normalized format that can be recognized later. Use the format `[text](path)` so it can be distinguished from wikilinks `[[target]]` during backlink generation.
 
-// FeedParams holds the channel-level configuration for the RSS feed.
-type FeedParams struct {
-    Title       string // Site name (from config)
-    Link        string // Base URL of the site
-    Description string // Site description (use SiteName + " RSS Feed" as fallback)
-}
-
-// ItemParams holds the data for a single RSS item.
-type ItemParams struct {
-    Title       string
-    Link        string    // Absolute URL (baseURL + webPath)
-    Description string    // Plain-text description (stripped markdown, truncated)
-    PubDate     time.Time // Created time from the file
-    GUID        string    // Same as Link (permalink)
-}
-
-// BuildFeedXML generates a complete RSS 2.0 XML document as a string.
-// It takes channel-level params and a slice of items.
-// Items should be pre-sorted by PubDate descending (newest first).
-// Returns the XML string and any error from marshaling.
-func BuildFeedXML(params FeedParams, items []ItemParams) (string, error)
-```
-
-The `BuildFeedXML` function should:
-- Produce a valid RSS 2.0 XML document with `<?xml version="1.0" encoding="UTF-8"?>` header
-- Include `<rss version="2.0">` root with `<channel>` containing `<title>`, `<link>`, `<description>`, and `<lastBuildDate>` (RFC1123Z format)
-- Each item should have `<title>`, `<link>`, `<description>`, `<pubDate>` (RFC1123Z), and `<guid isPermaLink="true">`
-- Use `encoding/xml` with struct-based marshaling (like sitemap.go does)
-
-2. `internal/rss/rss_test.go` — Add `// @feature:rss Tests for RSS feed generation.` on line 1.
-
-Write tests following the pattern in `internal/jsonld/jsonld_test.go`:
-
-- `TestBuildFeedXML_FullFeed`: Create a FeedParams and 2 ItemParams, call BuildFeedXML, parse the returned XML, verify channel title/link/description, verify item count is 2, verify item fields
-- `TestBuildFeedXML_EmptyItems`: Verify that an empty items slice still produces a valid RSS document with a channel but no items
-- `TestBuildFeedXML_EmptyDescription`: Verify items with empty description omit the `<description>` element
-- `TestBuildFeedXML_SpecialCharacters`: Verify that XML special characters (`&`, `<`, `>`) in titles/descriptions are properly escaped
-
-Write the tests FIRST (they should fail), then implement `BuildFeedXML`.
-
-**Verify command:** `go test ./internal/rss/...`
+**Verify:** `go test ./internal/obsidian/ -run TestProcessMarkdown -v`
 </task>
 
-<task order="2" title="RSS entry collection during vault scan" depends_on="1">
-Wire up RSS feed entry collection into the vault scanning pipeline, following the exact pattern used by `Sitemap` in `internal/obsidian/obsidian.go` and `internal/obsidian/sitemap.go`.
+<task order="2" title="Resolve relative markdown links during rendering" depends_on="1">
+The `renderLink` method in `internal/obsidian/markdown/wikilinks.go` (lines 286-309) currently passes the destination URL through `slugify()` without resolving relative paths. We need it to resolve relative markdown links (like `./sibling.md`, `../parent/note.md`) against the current file's location and the file index.
 
-**Context from existing code:**
+**Context about existing code:**
+- `IndexResolver` struct (line 585-594 of `wikilinks.go`) has fields: `Index`, `SourceMap`, `Links`, `CurrentSource`, `BasePath`, `Engine`, `ReadFile`, `ImageResults`
+- `CurrentSource` is set to the current file's `WebPath` before rendering (in `markdown.go:80`)
+- `FindFile()` method (line 60-139) resolves wikilinks by looking up names in the Index
+- `SourceMap` maps `WebPath → RelPath`
 
-The `Vault` struct in `internal/obsidian/obsidian.go:699-708` currently has:
-```go
-type Vault struct {
-    FileIndex  map[string][]*File
-    SourceMap  map[string]string
-    GraphNodes []GraphNode
-    Files      []*File
-    Sitemap    *Sitemap
-    Folders    map[string]*Folder
-    Tags       map[string]*Tag
-}
-```
+**What to do:**
 
-The `Obsidian` struct (line 736-743) has fields: `log`, `InputDir`, `OutputDir`, `BaseURL`, `FlatURLs`, `Vault`.
+1. **Write tests first** in `internal/obsidian/markdown/wikilinks_test.go` (append to existing file):
+   - This file already has `newTestResolver()` helper and tests for `FindFile`
+   - Add tests for a new method `ResolveMarkdownLink(dest string) string`:
+     - Test: relative link `./sibling.md` when `CurrentSource` is `/folder/current` → resolves to `/folder/sibling`
+     - Test: parent link `../other/note.md` when `CurrentSource` is `/folder/current` → resolves to `/other/note`
+     - Test: absolute path `/folder/note.md` → resolves to `/folder/note`
+     - Test: external URL `https://example.com` → returned as-is (no resolution)
+     - Test: anchor-only link `#heading` → returned as-is
+     - Test: link with anchor `./note.md#heading` → resolves path part, preserves anchor
+     - Test: link to non-.md file `./image.png` → resolves to correct web path
 
-The `Scan()` method (line 348-359) initializes the Vault, including `Sitemap: &Sitemap{Path: filepath.Join(o.BaseURL, "/sitemap.xml")}`.
-
-Sitemap entries are added during file/folder creation at lines 77 and 152 via `o.AddSitemapEntry(modTime, o.BaseURL, webPath)`.
-
-`GenerateSitemap()` in `sitemap.go` writes the file to `filepath.Join(o.OutputDir, "sitemap.xml")`.
-
-**Files to edit:**
-
-1. `internal/obsidian/obsidian.go`:
-   - Add an `RSS` field to the `Vault` struct: `RSS []RSSEntry` (a simple slice, no pointer wrapper needed)
-   - Define the `RSSEntry` struct in this file (keeping it close to the domain types):
-     ```go
-     type RSSEntry struct {
-         Title       string
-         Description string
-         WebPath     string
-         PubDate     time.Time
-     }
-     ```
-   - Initialize `RSS: []RSSEntry{}` in the `Scan()` method alongside the Sitemap initialization (around line 356)
-   - In the `NewFile` method (around line 152 where `AddSitemapEntry` is called), add RSS entry collection for `.md` files only:
-     ```go
-     if ext == ".md" {
-         title := f.Name
-         if t, ok := f.Frontmatter["title"]; ok {
-             if s, ok := t.(string); ok && s != "" {
-                 title = s
-             }
-         }
-         var desc string
-         if d, ok := f.Frontmatter["description"]; ok {
-             if s, ok := d.(string); ok {
-                 desc = s
-             }
-         }
-         o.Vault.RSS = append(o.Vault.RSS, RSSEntry{
-             Title:       title,
-             Description: desc,
-             WebPath:     webPath,
-             PubDate:     birthTime,
-         })
-     }
-     ```
-   - IMPORTANT: The frontmatter is parsed inside `processMarkdown()` which is called AFTER file creation (line 155-157). So the RSS entry addition must happen AFTER the `processMarkdown()` call, not before. Read the `NewFile` function carefully and place the RSS code after `processMarkdown()` returns successfully.
-
-2. Create `internal/obsidian/rss.go` — Add `// @feature:rss RSS feed XML generation integrated with vault scanning.` on line 1.
-
-   Add a `GenerateRSS` method on `*Obsidian` that follows the same pattern as `GenerateSitemap()` in `sitemap.go`:
+2. **Add `ResolveMarkdownLink` method** to `IndexResolver` in `internal/obsidian/markdown/wikilinks.go`:
    ```go
-   func (o *Obsidian) GenerateRSS() error
+   func (r *IndexResolver) ResolveMarkdownLink(dest string) string
    ```
-   This method should:
-   - Sort `o.Vault.RSS` entries by `PubDate` descending (newest first)
-   - Cap at 50 items maximum (standard RSS practice)
-   - Convert each `RSSEntry` to an `rss.ItemParams` (importing `github.com/otaleghani/kiln/internal/rss`)
-   - Build the full link as `strings.TrimRight(o.BaseURL, "/") + entry.WebPath`
-   - Call `rss.BuildFeedXML` with channel params using `o.BaseURL` for Title/Link
-   - Write the result to `filepath.Join(o.OutputDir, "feed.xml")`
+   Logic:
+   - If `dest` starts with `http://`, `https://`, `mailto:` → return as-is (external)
+   - If `dest` starts with `#` → return as-is (anchor-only)
+   - Separate anchor part if present (`path#anchor` → path + `#anchor`)
+   - If `dest` is a relative path (starts with `./`, `../`, or has no scheme):
+     - Resolve it relative to the current source's directory: use `path.Dir(r.CurrentSource)` + `path.Clean(dest)`
+     - Strip `.md` extension from the resolved path for clean URLs
+     - Slugify the result
+   - Re-append anchor if present
+   - Record a graph link via `r.recordGraphLink()` if the resolved path is internal
+   - Return the resolved path
 
-**Verify command:** `go test ./internal/rss/... && go build ./...`
+3. **Update `renderLink`** in `wikilinks.go` (lines 286-309):
+   - Change `newDest := string(n.Destination)` to use the new resolver:
+     ```go
+     newDest := r.ResolveMarkdownLink(string(n.Destination))
+     ```
+   - Remove the existing `slugify(newDest)` call since `ResolveMarkdownLink` handles slugification
+
+4. **Update `renderImage`** in `wikilinks.go` (lines 312-328):
+   - Similarly resolve `newDest` through `ResolveMarkdownLink` for relative image paths
+
+**Verify:** `go test ./internal/obsidian/markdown/ -v`
 </task>
 
-<task order="3" title="Wire RSS generation into default builder" depends_on="2">
-Call `GenerateRSS()` from the default build pipeline and add an RSS `<link>` auto-discovery tag to the HTML templates.
+<task order="3" title="Update backlink generation for markdown links" depends_on="1">
+The `GenerateBacklinks` function in `internal/obsidian/obsidian.go` (lines 255-322) currently only processes wikilink-format strings (`[[target]]`). After task 1, `File.Links` will also contain standard markdown links in the format `[text](path)`. We need to handle both formats.
 
-**Context from existing code:**
+**Context about existing `GenerateBacklinks` code (lines 255-322):**
+- Creates a lookup map: `fileMap[lowercase_name] = *File`
+- For non-.md files, key includes extension: `fileMap[name+ext]`
+- Iterates through `sourceFile.Links` and `sourceFile.Embeds`
+- Cleans wikilinks: strips `!`, `[[`, `]]`, alias `|`, anchor `#`, path prefix
+- Looks up by lowercase cleaned name in `fileMap`
 
-In `internal/builder/builder_default.go`, the artifact generation happens at lines 405-428:
-```go
-err = site.Obsidian.GenerateSitemap()
-if err != nil {
-    log.Error("Couldn't render 'sitemap.xml'", "error", err)
-}
-err = site.Obsidian.GenerateRobots()
-if err != nil {
-    log.Error("Couldn't render 'robots.txt'", "error", err)
-}
-```
+**What to do:**
 
-The layout templates (`internal/templates/layout_default.templ` and `internal/templates/layout_simple.templ`) both call `@Head(data)` inside their `<head>` sections. The `Head` component is defined in `internal/templates/shared.templ` starting at line 194.
+1. **Write tests first** in `internal/obsidian/obsidian_links_test.go` (the file created in task 1, add `// @feature:vault-scan` pragma if not present):
+   - Test `GenerateBacklinks` with a mix of wikilinks and markdown links:
+     - File A has `Links: ["[[B]]", "[link](./C.md)"]`
+     - File B and File C should each get a backlink to A
+   - Test that markdown link `[text](../folder/note.md)` generates a backlink
+   - Test that external markdown links (`[text](https://example.com)`) do NOT generate backlinks
+   - Test that duplicate backlinks are not created
 
-The `SiteData` struct is in `internal/templates/types.go:31-39`:
-```go
-type SiteData struct {
-    BaseURL           string
-    SiteName          string
-    Theme             *ThemeData
-    NavbarRoot        *obsidian.NavbarNode
-    DisableLocalGraph bool
-    DisableTOC        bool
-    FlatURLs          bool
-}
-```
+2. **Update `GenerateBacklinks`** in `internal/obsidian/obsidian.go`:
+   - Add a helper function to detect link format:
+     ```go
+     func isMarkdownLink(raw string) bool {
+         return strings.HasPrefix(raw, "[") && strings.Contains(raw, "](") && strings.HasSuffix(raw, ")")
+     }
+     ```
+   - In the loop that processes `rawLink` (around lines 275-318), add a branch:
+     - If `isMarkdownLink(rawLink)`: extract the path from `[text](path)`, skip external URLs, clean the path (remove `.md` extension, extract base name), then look up in `fileMap`
+     - Else: use existing wikilink cleaning logic
+   - The backlink format should remain `[[SourceName]]` (wikilink format) regardless of how the link was written — backlinks are always displayed as wikilinks
 
-**Files to edit:**
+**Verify:** `go test ./internal/obsidian/ -v`
+</task>
 
-1. `internal/builder/builder_default.go` — Add the RSS generation call right after the sitemap generation (after line 408):
-   ```go
-   err = site.Obsidian.GenerateRSS()
-   if err != nil {
-       log.Error("Couldn't render 'feed.xml'", "error", err)
-   }
-   ```
+<task order="4" title="Update linter to check markdown links" depends_on="1">
+The linter in `internal/linter/linter.go` currently only checks wikilinks for broken references. We need it to also validate standard markdown links.
 
-2. `internal/templates/shared.templ` — Add an RSS auto-discovery `<link>` tag inside the `Head` component (around line 194, at the beginning of the `Head` templ function, before any conditionals). This should be unconditional since every page should advertise the feed:
-   ```
-   <link rel="alternate" type="application/rss+xml" title={ data.Site.SiteName + " RSS Feed" } href={ data.Site.BaseURL + "/feed.xml" }/>
-   ```
+**Context about existing linter code:**
+- `CollectNotes(inputDir)` returns `map[string]bool` with valid file paths/names
+- `BrokenLinks()` uses regex `\[\[(.*?)\]\]` to find wikilinks, strips aliases and anchors, checks candidates
 
-3. After editing the `.templ` file, regenerate the Go code by running:
-   ```
-   cd /home/oliviero/Workspace/kiln && go generate ./internal/templates/...
-   ```
-   If `go generate` doesn't work, try running `templ generate` directly. If that also fails, manually check how the existing `_templ.go` files are generated (look for `//go:generate` directives or a Makefile).
+**What to do:**
 
-**Verify command:** `go build ./... && go test ./...`
+1. **Write tests first** in a new file `internal/linter/linter_test.go`:
+   - Add `// @feature:linter` pragma on line 1
+   - Create a temp directory with markdown files containing both wikilinks and markdown links
+   - Test that broken wikilinks are detected (existing behavior)
+   - Test that broken markdown links like `[text](./nonexistent.md)` are detected
+   - Test that valid markdown links like `[text](./existing.md)` are NOT flagged
+   - Test that external links (`https://...`) are skipped and NOT checked
+   - Test that anchor-only links (`#heading`) are skipped
+
+2. **Update `BrokenLinks()`** in `internal/linter/linter.go`:
+   - Add a second regex for markdown links:
+     ```go
+     mdLinkRegex := regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
+     ```
+   - After the existing wikilink checking loop, add a second loop for markdown link matches:
+     - Extract the path (group 2)
+     - Skip external links (starts with `http://`, `https://`, `mailto:`)
+     - Skip anchor-only links (starts with `#`)
+     - Strip anchor part if present
+     - Resolve relative paths: use `filepath.Dir(relPath)` of the current file + the link path, then `filepath.Clean()` it
+     - Check the resolved path against the `notes` map (same candidate logic as wikilinks)
+     - Log warning for broken links
+
+**Verify:** `go test ./internal/linter/ -v`
+</task>
+
+<task order="5" title="Add integration rendering tests for markdown links" depends_on="2">
+Add integration-level tests that verify the full rendering pipeline correctly handles standard markdown links alongside wikilinks. This tests the `ObsidianMarkdown.RenderNote()` and `ObsidianMarkdown.Render()` methods end-to-end.
+
+**Context about existing rendering:**
+- `markdown.New(fileIndex, loader)` creates an `ObsidianMarkdown` instance (in `internal/obsidian/markdown/markdown.go`)
+- `RenderNote(content []byte)` renders raw markdown bytes to HTML string
+- The `IndexResolver` is registered as a custom renderer for `ast.KindLink`, `ast.KindImage`, and `wikilink.Kind`
+
+**What to do:**
+
+1. **Create test file** `internal/obsidian/markdown/markdown_links_test.go`:
+   - Add `// @feature:markdown` pragma on line 1
+   - Create helper to build an `ObsidianMarkdown` with a test file index
+   - Test cases for `RenderNote`:
+     - Wikilink `[[Note]]` renders as `<a href="/note" class="internal-link">Note</a>` (existing behavior, verify not broken)
+     - Markdown link `[text](./note.md)` renders as `<a href="/current-dir/note">text</a>` (resolved relative path)
+     - Markdown link `[text](https://example.com)` renders as `<a href="https://example.com">text</a>` (external, untouched)
+     - Markdown image `![alt](./image.png)` renders with resolved path
+     - Mixed content with both wikilinks and markdown links renders correctly
+   - For each test, set `resolver.CurrentSource` appropriately before rendering
+
+2. **Verify that graph links are collected** from both wikilinks and markdown links:
+   - After rendering content with both link types, check `resolver.Links` contains edges from both
+
+**Verify:** `go test ./internal/obsidian/markdown/ -v`
 </task>
 </tasks>
