@@ -118,6 +118,7 @@
         if (!content) return;
         var tooltip = getTooltip();
         tooltip.innerHTML = content;
+        tooltip.scrollTop = 0;
         positionTooltip(tooltip, link);
         tooltip.style.display = "block";
         activeAnchor = link;
