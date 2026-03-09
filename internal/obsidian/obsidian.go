@@ -24,6 +24,7 @@ import (
 var (
 	// linkRegex     = regexp.MustCompile(`\[\[([^\]]+)\]\]`)
 	wikilinkRegex = regexp.MustCompile(`(!?)\[\[([^\]]+)\]\]`)
+	mdLinkRegex   = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)]+)\)`)
 	// tagRegex  = regexp.MustCompile(`#(\w+)`)
 	// 1. (?m) enables multi-line mode so ^ matches start of line
 	// 2. (?:^|\s) is a non-capturing group matching Start-of-Line OR Whitespace
@@ -225,6 +226,34 @@ func (f *File) processMarkdown() error {
 		} else {
 			// It is a Link -> Add to f.Links
 			f.Links = append(f.Links, m[0])
+		}
+	}
+
+	// --- B2. Extract Standard Markdown Links ---
+	mdMatches := mdLinkRegex.FindAllStringSubmatch(bodyString, -1)
+	for _, m := range mdMatches {
+		// m[0] = Full match (e.g. "![alt](image.png)" or "[text](path.md)")
+		// m[1] = "!" if image/embed, "" otherwise
+		// m[2] = link text / alt text
+		// m[3] = URL / path
+		target := m[3]
+
+		if strings.HasPrefix(target, "http://") ||
+			strings.HasPrefix(target, "https://") ||
+			strings.HasPrefix(target, "mailto:") {
+			continue
+		}
+		if strings.HasPrefix(target, "#") {
+			continue
+		}
+
+		// Store without the "!" prefix, as [text](path) format
+		link := "[" + m[2] + "](" + m[3] + ")"
+		if m[1] == "!" {
+			f.Embeds = append(f.Embeds, link)
+			f.Links = append(f.Links, link)
+		} else {
+			f.Links = append(f.Links, link)
 		}
 	}
 
