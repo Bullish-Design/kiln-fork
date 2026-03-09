@@ -132,3 +132,113 @@ func TestProcessMarkdown_MdLinkHttpSkipped(t *testing.T) {
 		t.Errorf("expected no links for external URLs, got %v", f.Links)
 	}
 }
+
+// --- GenerateBacklinks tests ---
+
+func TestGenerateBacklinks_MixedWikiAndMdLinks(t *testing.T) {
+	fileA := &File{
+		Path:      "/vault/A.md",
+		Name:      "A",
+		Ext:       ".md",
+		Links:     []string{"[[B]]", "[link](./C.md)"},
+		Backlinks: []string{},
+	}
+	fileB := &File{
+		Path:      "/vault/B.md",
+		Name:      "B",
+		Ext:       ".md",
+		Links:     []string{},
+		Backlinks: []string{},
+	}
+	fileC := &File{
+		Path:      "/vault/C.md",
+		Name:      "C",
+		Ext:       ".md",
+		Links:     []string{},
+		Backlinks: []string{},
+	}
+
+	GenerateBacklinks([]*File{fileA, fileB, fileC})
+
+	if !slices.Contains(fileB.Backlinks, "[[A]]") {
+		t.Errorf("expected B to have backlink [[A]], got %v", fileB.Backlinks)
+	}
+	if !slices.Contains(fileC.Backlinks, "[[A]]") {
+		t.Errorf("expected C to have backlink [[A]], got %v", fileC.Backlinks)
+	}
+}
+
+func TestGenerateBacklinks_MdLinkWithPath(t *testing.T) {
+	fileA := &File{
+		Path:      "/vault/A.md",
+		Name:      "A",
+		Ext:       ".md",
+		Links:     []string{"[text](../folder/note.md)"},
+		Backlinks: []string{},
+	}
+	fileNote := &File{
+		Path:      "/vault/folder/note.md",
+		Name:      "note",
+		Ext:       ".md",
+		Links:     []string{},
+		Backlinks: []string{},
+	}
+
+	GenerateBacklinks([]*File{fileA, fileNote})
+
+	if !slices.Contains(fileNote.Backlinks, "[[A]]") {
+		t.Errorf("expected note to have backlink [[A]], got %v", fileNote.Backlinks)
+	}
+}
+
+func TestGenerateBacklinks_ExternalMdLinkSkipped(t *testing.T) {
+	fileA := &File{
+		Path:      "/vault/A.md",
+		Name:      "A",
+		Ext:       ".md",
+		Links:     []string{"[text](https://example.com)"},
+		Backlinks: []string{},
+	}
+	fileB := &File{
+		Path:      "/vault/B.md",
+		Name:      "B",
+		Ext:       ".md",
+		Links:     []string{},
+		Backlinks: []string{},
+	}
+
+	GenerateBacklinks([]*File{fileA, fileB})
+
+	if len(fileB.Backlinks) != 0 {
+		t.Errorf("expected no backlinks from external URL, got %v", fileB.Backlinks)
+	}
+}
+
+func TestGenerateBacklinks_NoDuplicates(t *testing.T) {
+	fileA := &File{
+		Path:      "/vault/A.md",
+		Name:      "A",
+		Ext:       ".md",
+		Links:     []string{"[[B]]", "[link](./B.md)"},
+		Backlinks: []string{},
+	}
+	fileB := &File{
+		Path:      "/vault/B.md",
+		Name:      "B",
+		Ext:       ".md",
+		Links:     []string{},
+		Backlinks: []string{},
+	}
+
+	GenerateBacklinks([]*File{fileA, fileB})
+
+	count := 0
+	for _, bl := range fileB.Backlinks {
+		if bl == "[[A]]" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 backlink [[A]], got %d in %v", count, fileB.Backlinks)
+	}
+}

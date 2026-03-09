@@ -280,6 +280,10 @@ func (f *File) processMarkdown() error {
 	return nil
 }
 
+func isMarkdownLink(raw string) bool {
+	return strings.HasPrefix(raw, "[") && strings.Contains(raw, "](") && strings.HasSuffix(raw, ")")
+}
+
 // GenerateBacklinks populates the Backlinks field for every file in the slice.
 func GenerateBacklinks(files []*File) {
 	// 1. Create a Lookup Map (Name -> *File)
@@ -302,33 +306,64 @@ func GenerateBacklinks(files []*File) {
 
 		for _, group := range referenceGroups {
 			for _, rawLink := range group {
-				// --- A. CLEAN THE LINK ---
-				// rawLink is "[[Link]]" or "![[Embed]]"
+				var lookupKey string
 
-				// 1. Remove optional Embed "!" prefix
-				cleanLink := strings.TrimPrefix(rawLink, "!")
+				if isMarkdownLink(rawLink) {
+					// --- Markdown link: [text](path) ---
+					start := strings.Index(rawLink, "](")
+					if start == -1 {
+						continue
+					}
+					path := rawLink[start+2 : len(rawLink)-1]
 
-				// 2. Remove surrounding brackets [[ and ]]
-				cleanLink = strings.TrimPrefix(cleanLink, "[[")
-				cleanLink = strings.TrimSuffix(cleanLink, "]]")
+					// Skip external URLs
+					if strings.HasPrefix(path, "http://") ||
+						strings.HasPrefix(path, "https://") ||
+						strings.HasPrefix(path, "mailto:") {
+						continue
+					}
 
-				// 3. Remove Alias (if exists) -> "My Page#Heading"
-				if idx := strings.Index(cleanLink, "|"); idx != -1 {
-					cleanLink = cleanLink[:idx]
+					// Remove anchor fragment
+					if idx := strings.Index(path, "#"); idx != -1 {
+						path = path[:idx]
+					}
+					if path == "" {
+						continue
+					}
+
+					// Extract base name and strip .md extension
+					base := filepath.Base(path)
+					base = strings.TrimSuffix(base, ".md")
+
+					lookupKey = strings.ToLower(base)
+				} else {
+					// --- Wikilink: [[Link]] or ![[Embed]] ---
+
+					// 1. Remove optional Embed "!" prefix
+					cleanLink := strings.TrimPrefix(rawLink, "!")
+
+					// 2. Remove surrounding brackets [[ and ]]
+					cleanLink = strings.TrimPrefix(cleanLink, "[[")
+					cleanLink = strings.TrimSuffix(cleanLink, "]]")
+
+					// 3. Remove Alias (if exists) -> "My Page#Heading"
+					if idx := strings.Index(cleanLink, "|"); idx != -1 {
+						cleanLink = cleanLink[:idx]
+					}
+
+					// 4. Remove Anchor/Header (if exists) -> "My Page"
+					if idx := strings.Index(cleanLink, "#"); idx != -1 {
+						cleanLink = cleanLink[:idx]
+					}
+
+					// 5. Normalize for Lookup
+					// Handle paths like "Folder/Note" -> just "Note"
+					if strings.Contains(cleanLink, "/") {
+						cleanLink = filepath.Base(cleanLink)
+					}
+
+					lookupKey = strings.ToLower(cleanLink)
 				}
-
-				// 4. Remove Anchor/Header (if exists) -> "My Page"
-				if idx := strings.Index(cleanLink, "#"); idx != -1 {
-					cleanLink = cleanLink[:idx]
-				}
-
-				// 5. Normalize for Lookup
-				// Handle paths like "Folder/Note" -> just "Note"
-				if strings.Contains(cleanLink, "/") {
-					cleanLink = filepath.Base(cleanLink)
-				}
-
-				lookupKey := strings.ToLower(cleanLink)
 
 				// --- B. FIND TARGET AND ADD BACKLINK ---
 				if targetFile, found := fileMap[lookupKey]; found {
