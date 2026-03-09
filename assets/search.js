@@ -229,6 +229,11 @@
   }
 
   window.initFullSearch = function () {
+    var hintEl = document.getElementById("search-shortcut-hint");
+    if (hintEl) {
+      hintEl.textContent = navigator.platform.indexOf("Mac") > -1 ? "\u2318K" : "Ctrl+K";
+    }
+
     fetchIndex().then(function (data) {
       indexEntries = data;
       invertedIndex = buildInvertedIndex(data);

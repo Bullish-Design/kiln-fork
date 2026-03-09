@@ -67,10 +67,13 @@ templ DefaultLayout(data *PageData) {
 					<button
 						id="search-button"
 						onclick="if(window.openSearchModal)window.openSearchModal()"
-						class="w-full p-2 rounded border border-sidebar-border text-sm text-left cursor-pointer bg-transparent hover:bg-hover transition-colors flex items-center gap-2"
+						class="w-full p-2 rounded border border-sidebar-border text-sm text-left cursor-pointer bg-transparent hover:bg-hover transition-colors flex items-center justify-between"
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-						<span class="opacity-60">Search notes...</span>
+						<div class="flex items-center gap-2">
+							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+							<span class="opacity-60">Search notes...</span>
+						</div>
+						<span class="opacity-40 text-xs" id="search-shortcut-hint"></span>
 					</button>
 					<ul class="font-main text-sm">
 						if data.Site.NavbarRoot != nil {
