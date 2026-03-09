@@ -1,120 +1,200 @@
 -- DwightAuto decomposition output
--- Request: Delete the `search-hint` from the search overlay. also add the ability to close the search overlay using esc key. add the search-hint in the button instead with a flex-between and items center. Change
--- Timestamp: Mon 09 Mar 2026 04:44:38 PM CET
+-- Request: Create an automatic RSS feed generation for blog-style vaults, making it easy for readers to subscribe.
+-- Timestamp: Mon 09 Mar 2026 05:14:46 PM CET
 
-I'll stop retrying and provide the changes as diffs you can apply manually.
+I now have a complete understanding. Here's my decomposition:
 
----
+<tasks>
+<task order="1" title="RSS package: types, builder, and tests">
+Create a new `internal/rss/` package with RSS 2.0 feed generation logic, following the same pattern as `internal/search/search.go` and `internal/jsonld/jsonld.go`.
 
-## Change 1: `assets/search.js`
+**Files to create:**
 
-Remove the search-hint div from `createOverlay()` and add an Escape key listener:
+1. `internal/rss/rss.go` — Add `// @feature:rss RSS 2.0 feed generation for blog-style vaults.` on line 1.
 
-```diff
---- a/assets/search.js
-+++ b/assets/search.js
-@@ -116,17 +116,12 @@
-     input.placeholder = "Search...";
-     input.autocomplete = "off";
- 
--    var hint = document.createElement("div");
--    hint.className = "search-hint";
--    hint.textContent = navigator.platform.indexOf("Mac") > -1 ? "⌘K" : "Ctrl+K";
--
-     var results = document.createElement("div");
-     results.id = "search-modal-results";
- 
-     modal.appendChild(input);
--    modal.appendChild(hint);
-     modal.appendChild(results);
-     overlay.appendChild(modal);
-     document.body.appendChild(overlay);
- 
-@@ -132,6 +127,14 @@
-       if (e.target === overlay) hideOverlay();
-     });
- 
-+    document.addEventListener("keydown", function (e) {
-+      if (e.key === "Escape") {
-+        var ov = document.getElementById("search-overlay");
-+        if (ov && !ov.classList.contains("hidden")) {
-+          hideOverlay();
-+        }
-+      }
-+    });
-+
-     return overlay;
+Define these types and functions:
+
+```go
+package rss
+
+// FeedParams holds the channel-level configuration for the RSS feed.
+type FeedParams struct {
+    Title       string // Site name (from config)
+    Link        string // Base URL of the site
+    Description string // Site description (use SiteName + " RSS Feed" as fallback)
+}
+
+// ItemParams holds the data for a single RSS item.
+type ItemParams struct {
+    Title       string
+    Link        string    // Absolute URL (baseURL + webPath)
+    Description string    // Plain-text description (stripped markdown, truncated)
+    PubDate     time.Time // Created time from the file
+    GUID        string    // Same as Link (permalink)
+}
+
+// BuildFeedXML generates a complete RSS 2.0 XML document as a string.
+// It takes channel-level params and a slice of items.
+// Items should be pre-sorted by PubDate descending (newest first).
+// Returns the XML string and any error from marshaling.
+func BuildFeedXML(params FeedParams, items []ItemParams) (string, error)
+```
+
+The `BuildFeedXML` function should:
+- Produce a valid RSS 2.0 XML document with `<?xml version="1.0" encoding="UTF-8"?>` header
+- Include `<rss version="2.0">` root with `<channel>` containing `<title>`, `<link>`, `<description>`, and `<lastBuildDate>` (RFC1123Z format)
+- Each item should have `<title>`, `<link>`, `<description>`, `<pubDate>` (RFC1123Z), and `<guid isPermaLink="true">`
+- Use `encoding/xml` with struct-based marshaling (like sitemap.go does)
+
+2. `internal/rss/rss_test.go` — Add `// @feature:rss Tests for RSS feed generation.` on line 1.
+
+Write tests following the pattern in `internal/jsonld/jsonld_test.go`:
+
+- `TestBuildFeedXML_FullFeed`: Create a FeedParams and 2 ItemParams, call BuildFeedXML, parse the returned XML, verify channel title/link/description, verify item count is 2, verify item fields
+- `TestBuildFeedXML_EmptyItems`: Verify that an empty items slice still produces a valid RSS document with a channel but no items
+- `TestBuildFeedXML_EmptyDescription`: Verify items with empty description omit the `<description>` element
+- `TestBuildFeedXML_SpecialCharacters`: Verify that XML special characters (`&`, `<`, `>`) in titles/descriptions are properly escaped
+
+Write the tests FIRST (they should fail), then implement `BuildFeedXML`.
+
+**Verify command:** `go test ./internal/rss/...`
+</task>
+
+<task order="2" title="RSS entry collection during vault scan" depends_on="1">
+Wire up RSS feed entry collection into the vault scanning pipeline, following the exact pattern used by `Sitemap` in `internal/obsidian/obsidian.go` and `internal/obsidian/sitemap.go`.
+
+**Context from existing code:**
+
+The `Vault` struct in `internal/obsidian/obsidian.go:699-708` currently has:
+```go
+type Vault struct {
+    FileIndex  map[string][]*File
+    SourceMap  map[string]string
+    GraphNodes []GraphNode
+    Files      []*File
+    Sitemap    *Sitemap
+    Folders    map[string]*Folder
+    Tags       map[string]*Tag
+}
+```
+
+The `Obsidian` struct (line 736-743) has fields: `log`, `InputDir`, `OutputDir`, `BaseURL`, `FlatURLs`, `Vault`.
+
+The `Scan()` method (line 348-359) initializes the Vault, including `Sitemap: &Sitemap{Path: filepath.Join(o.BaseURL, "/sitemap.xml")}`.
+
+Sitemap entries are added during file/folder creation at lines 77 and 152 via `o.AddSitemapEntry(modTime, o.BaseURL, webPath)`.
+
+`GenerateSitemap()` in `sitemap.go` writes the file to `filepath.Join(o.OutputDir, "sitemap.xml")`.
+
+**Files to edit:**
+
+1. `internal/obsidian/obsidian.go`:
+   - Add an `RSS` field to the `Vault` struct: `RSS []RSSEntry` (a simple slice, no pointer wrapper needed)
+   - Define the `RSSEntry` struct in this file (keeping it close to the domain types):
+     ```go
+     type RSSEntry struct {
+         Title       string
+         Description string
+         WebPath     string
+         PubDate     time.Time
+     }
+     ```
+   - Initialize `RSS: []RSSEntry{}` in the `Scan()` method alongside the Sitemap initialization (around line 356)
+   - In the `NewFile` method (around line 152 where `AddSitemapEntry` is called), add RSS entry collection for `.md` files only:
+     ```go
+     if ext == ".md" {
+         title := f.Name
+         if t, ok := f.Frontmatter["title"]; ok {
+             if s, ok := t.(string); ok && s != "" {
+                 title = s
+             }
+         }
+         var desc string
+         if d, ok := f.Frontmatter["description"]; ok {
+             if s, ok := d.(string); ok {
+                 desc = s
+             }
+         }
+         o.Vault.RSS = append(o.Vault.RSS, RSSEntry{
+             Title:       title,
+             Description: desc,
+             WebPath:     webPath,
+             PubDate:     birthTime,
+         })
+     }
+     ```
+   - IMPORTANT: The frontmatter is parsed inside `processMarkdown()` which is called AFTER file creation (line 155-157). So the RSS entry addition must happen AFTER the `processMarkdown()` call, not before. Read the `NewFile` function carefully and place the RSS code after `processMarkdown()` returns successfully.
+
+2. Create `internal/obsidian/rss.go` — Add `// @feature:rss RSS feed XML generation integrated with vault scanning.` on line 1.
+
+   Add a `GenerateRSS` method on `*Obsidian` that follows the same pattern as `GenerateSitemap()` in `sitemap.go`:
+   ```go
+   func (o *Obsidian) GenerateRSS() error
+   ```
+   This method should:
+   - Sort `o.Vault.RSS` entries by `PubDate` descending (newest first)
+   - Cap at 50 items maximum (standard RSS practice)
+   - Convert each `RSSEntry` to an `rss.ItemParams` (importing `github.com/otaleghani/kiln/internal/rss`)
+   - Build the full link as `strings.TrimRight(o.BaseURL, "/") + entry.WebPath`
+   - Call `rss.BuildFeedXML` with channel params using `o.BaseURL` for Title/Link
+   - Write the result to `filepath.Join(o.OutputDir, "feed.xml")`
+
+**Verify command:** `go test ./internal/rss/... && go build ./...`
+</task>
+
+<task order="3" title="Wire RSS generation into default builder" depends_on="2">
+Call `GenerateRSS()` from the default build pipeline and add an RSS `<link>` auto-discovery tag to the HTML templates.
+
+**Context from existing code:**
+
+In `internal/builder/builder_default.go`, the artifact generation happens at lines 405-428:
+```go
+err = site.Obsidian.GenerateSitemap()
+if err != nil {
+    log.Error("Couldn't render 'sitemap.xml'", "error", err)
+}
+err = site.Obsidian.GenerateRobots()
+if err != nil {
+    log.Error("Couldn't render 'robots.txt'", "error", err)
+}
+```
+
+The layout templates (`internal/templates/layout_default.templ` and `internal/templates/layout_simple.templ`) both call `@Head(data)` inside their `<head>` sections. The `Head` component is defined in `internal/templates/shared.templ` starting at line 194.
+
+The `SiteData` struct is in `internal/templates/types.go:31-39`:
+```go
+type SiteData struct {
+    BaseURL           string
+    SiteName          string
+    Theme             *ThemeData
+    NavbarRoot        *obsidian.NavbarNode
+    DisableLocalGraph bool
+    DisableTOC        bool
+    FlatURLs          bool
+}
+```
+
+**Files to edit:**
+
+1. `internal/builder/builder_default.go` — Add the RSS generation call right after the sitemap generation (after line 408):
+   ```go
+   err = site.Obsidian.GenerateRSS()
+   if err != nil {
+       log.Error("Couldn't render 'feed.xml'", "error", err)
    }
-```
+   ```
 
-## Change 2: `assets/shared.css`
+2. `internal/templates/shared.templ` — Add an RSS auto-discovery `<link>` tag inside the `Head` component (around line 194, at the beginning of the `Head` templ function, before any conditionals). This should be unconditional since every page should advertise the feed:
+   ```
+   <link rel="alternate" type="application/rss+xml" title={ data.Site.SiteName + " RSS Feed" } href={ data.Site.BaseURL + "/feed.xml" }/>
+   ```
 
-Remove `.search-hint` CSS and add scrollbar styles to `#search-modal-results`:
+3. After editing the `.templ` file, regenerate the Go code by running:
+   ```
+   cd /home/oliviero/Workspace/kiln && go generate ./internal/templates/...
+   ```
+   If `go generate` doesn't work, try running `templ generate` directly. If that also fails, manually check how the existing `_templ.go` files are generated (look for `//go:generate` directives or a Makefile).
 
-```diff
---- a/assets/shared.css
-+++ b/assets/shared.css
-@@ -940,15 +940,24 @@
- }
- #search-modal-results {
-   flex: 1;
-   overflow-y: auto;
-+  scrollbar-width: thin;
-+  scrollbar-color: var(--sidebar-border) transparent;
-+}
-+#search-modal-results::-webkit-scrollbar {
-+  width: 8px;
-+}
-+#search-modal-results::-webkit-scrollbar-track {
-+  background: transparent;
-+}
-+#search-modal-results::-webkit-scrollbar-thumb {
-+  background-color: var(--sidebar-border);
-+  border-radius: 4px;
-+}
-+#search-modal-results::-webkit-scrollbar-thumb:hover {
-+  background-color: var(--accent-color);
- }
--.search-hint {
--  text-align: right;
--  padding: 0.25rem 1rem;
--  font-size: 0.7rem;
--  color: var(--color-comment, #888);
--  border-bottom: 1px solid var(--sidebar-border);
--}
-```
-
-## Change 3: `internal/templates/layout_default.templ`
-
-Restructure the search button to have `justify-between` and add the keyboard shortcut hint:
-
-```diff
---- a/internal/templates/layout_default.templ
-+++ b/internal/templates/layout_default.templ
-@@ -67,11 +67,16 @@
- 				<button
- 					id="search-button"
- 					onclick="if(window.openSearchModal)window.openSearchModal()"
--					class="w-full p-2 rounded border border-sidebar-border text-sm text-left cursor-pointer bg-transparent hover:bg-hover transition-colors flex items-center gap-2"
-+					class="w-full p-2 rounded border border-sidebar-border text-sm text-left cursor-pointer bg-transparent hover:bg-hover transition-colors flex items-center justify-between"
- 				>
--					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
--					<span class="opacity-60">Search notes...</span>
-+					<span class="flex items-center gap-2">
-+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-+						<span class="opacity-60">Search notes...</span>
-+					</span>
-+					<span class="opacity-40 text-xs" id="search-hint-key"></span>
- 				</button>
-+				<script>
-+					document.getElementById("search-hint-key").textContent = navigator.platform.indexOf("Mac") > -1 ? "\u2318K" : "Ctrl+K";
-+				</script>
-```
-
-## After applying changes
-
-Run:
-```bash
-go generate ./internal/templates/
-go build ./...
-```
+**Verify command:** `go build ./... && go test ./...`
+</task>
+</tasks>
