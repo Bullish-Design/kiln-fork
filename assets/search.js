@@ -116,21 +116,25 @@
     input.placeholder = "Search...";
     input.autocomplete = "off";
 
-    var hint = document.createElement("div");
-    hint.className = "search-hint";
-    hint.textContent = navigator.platform.indexOf("Mac") > -1 ? "⌘K" : "Ctrl+K";
-
     var results = document.createElement("div");
     results.id = "search-modal-results";
 
     modal.appendChild(input);
-    modal.appendChild(hint);
     modal.appendChild(results);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
     overlay.addEventListener("click", function (e) {
       if (e.target === overlay) hideOverlay();
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        var ov = document.getElementById("search-overlay");
+        if (ov && !ov.classList.contains("hidden")) {
+          hideOverlay();
+        }
+      }
     });
 
     return overlay;
