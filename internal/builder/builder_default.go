@@ -407,6 +407,11 @@ func buildDefault(log *slog.Logger) {
 		log.Error("Couldn't render 'sitemap.xml'", "error", err)
 	}
 
+	err = site.Obsidian.GenerateRSS()
+	if err != nil {
+		log.Error("Couldn't render 'feed.xml'", "error", err)
+	}
+
 	err = site.Obsidian.GenerateRobots()
 	if err != nil {
 		log.Error("Couldn't render 'robots.txt'", "error", err)

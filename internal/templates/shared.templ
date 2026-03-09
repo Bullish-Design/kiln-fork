@@ -192,6 +192,7 @@ templ Canonical(data *PageData) {
 }
 
 templ Head(data *PageData) {
+	<link rel="alternate" type="application/rss+xml" title={ data.Site.SiteName + " RSS Feed" } href={ data.Site.BaseURL + "/feed.xml" }/>
 	if !data.IsFolder && !data.IsTag && data.File != nil {
 		<title>
 			if title, ok := data.Frontmatter["title"]; ok && toStr(title) != "" {
