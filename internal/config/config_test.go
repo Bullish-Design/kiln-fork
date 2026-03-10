@@ -23,6 +23,7 @@ disable-toc: true
 disable-local-graph: true
 port: "3000"
 log: debug
+accent-color: blue
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write kiln.yaml: %v", err)
@@ -74,6 +75,9 @@ log: debug
 	}
 	if cfg.Log != "debug" {
 		t.Errorf("Log = %q, want %q", cfg.Log, "debug")
+	}
+	if cfg.AccentColor != "blue" {
+		t.Errorf("AccentColor = %q, want %q", cfg.AccentColor, "blue")
 	}
 }
 
@@ -136,6 +140,9 @@ url: https://notes.dev
 	if cfg.Log != "" {
 		t.Errorf("Log = %q, want empty", cfg.Log)
 	}
+	if cfg.AccentColor != "" {
+		t.Errorf("AccentColor = %q, want empty", cfg.AccentColor)
+	}
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
@@ -192,6 +199,9 @@ func TestLoad_EmptyFile(t *testing.T) {
 	if cfg.DisableLocalGraph {
 		t.Error("DisableLocalGraph = true, want false")
 	}
+	if cfg.AccentColor != "" {
+		t.Errorf("AccentColor = %q, want empty", cfg.AccentColor)
+	}
 }
 
 func TestFindFile_Exists(t *testing.T) {
@@ -230,5 +240,16 @@ func TestValueOr_OnlyOverridesEmpty(t *testing.T) {
 	}
 	if got := cfg.ValueOr("font", "inter"); got != "inter" {
 		t.Errorf("ValueOr(font) = %q, want %q", got, "inter")
+	}
+
+	// accent-color: config value wins when set.
+	cfgColor := Config{AccentColor: "red"}
+	if got := cfgColor.ValueOr("accent-color", ""); got != "red" {
+		t.Errorf("ValueOr(accent-color) = %q, want %q", got, "red")
+	}
+	// accent-color: fallback wins when empty.
+	cfgNoColor := Config{}
+	if got := cfgNoColor.ValueOr("accent-color", ""); got != "" {
+		t.Errorf("ValueOr(accent-color) = %q, want empty", got)
 	}
 }

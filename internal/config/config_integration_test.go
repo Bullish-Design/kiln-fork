@@ -12,6 +12,7 @@ func TestConfigIntegration_FullPipeline(t *testing.T) {
 	content := `theme: dracula
 font: lato
 url: https://example.com
+accent-color: green
 `
 	if err := os.WriteFile(filepath.Join(dir, "kiln.yaml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write kiln.yaml: %v", err)
@@ -43,10 +44,18 @@ url: https://example.com
 	if cfg.URL != "https://example.com" {
 		t.Errorf("URL = %q, want %q", cfg.URL, "https://example.com")
 	}
+	if cfg.AccentColor != "green" {
+		t.Errorf("AccentColor = %q, want %q", cfg.AccentColor, "green")
+	}
 
 	// ValueOr: config value wins over fallback.
 	if got := cfg.ValueOr("theme", "default"); got != "dracula" {
 		t.Errorf("ValueOr(theme) = %q, want %q", got, "dracula")
+	}
+
+	// ValueOr: accent-color config value wins.
+	if got := cfg.ValueOr("accent-color", ""); got != "green" {
+		t.Errorf("ValueOr(accent-color) = %q, want %q", got, "green")
 	}
 
 	// ValueOr: fallback wins for unset field.

@@ -28,6 +28,7 @@ type Config struct {
 	Port              string `yaml:"port"`
 	Log               string `yaml:"log"`
 	Lang              string `yaml:"lang"`
+	AccentColor       string `yaml:"accent-color"`
 }
 
 // Load reads a kiln.yaml file from the given path.
@@ -95,6 +96,8 @@ func (c *Config) ValueOr(field, fallback string) string {
 		val = c.Log
 	case "lang":
 		val = c.Lang
+	case "accent-color":
+		val = c.AccentColor
 	}
 	if val != "" {
 		return val
