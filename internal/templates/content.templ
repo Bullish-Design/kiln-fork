@@ -296,7 +296,7 @@ templ BaseList(data *PageData) {
 // LocalGraph renders the local graph expand button and container for the default layout sidebar.
 templ LocalGraph(disabled bool) {
 	if !disabled {
-		<div id="local-graph-wrapper">
+		<div id="local-graph-wrapper" class="p-4 border-b border-b-sidebar-border">
 			<header class="flex justify-between items-center py-2">
 				<span class="font-bold">Local Graph</span>
 				<div>

@@ -133,13 +133,13 @@ templ DefaultLayout(data *PageData) {
 							@GraphButton(data.Site.BaseURL)
 						</div>
 					</header>
+					if !data.Site.DisableLocalGraph {
+						@LocalGraph(data.Site.DisableLocalGraph)
+					}
 					<div id="right-sidebar-content" class="p-4 flex-1 overflow-y-auto flex flex-col gap-8">
 						@TOCPanel(data)
 					</div>
 				</aside>
-			}
-			if !data.Site.DisableLocalGraph {
-				@LocalGraph(data.Site.DisableLocalGraph)
 			}
 		</body>
 	</html>
