@@ -29,4 +29,5 @@ var (
 	DisableTOC        bool   // Disables table of contents
 	DisableLocalGraph bool   // Disables local graph
 	Lang              string // Language code for the site
+	AccentColorName   string // Accent color override (palette color name)
 )

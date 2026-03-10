@@ -350,15 +350,55 @@ var themes = map[string]*Theme{
 
 // ResolveTheme looks up a theme by name.
 // If the theme is not found, it defaults to "default" and logs a warning.
-// It also resolves the associated font using resolveFont.
-func ResolveTheme(themeName, fontName string, log *slog.Logger) *Theme {
+// It also resolves the associated font using resolveFont and optionally
+// overrides the accent color from the theme palette.
+func ResolveTheme(themeName, fontName, accentColorName string, log *slog.Logger) *Theme {
 	theme, ok := themes[strings.ToLower(themeName)]
 	if !ok {
 		log.Warn("Theme not found. Using default theme.", "name", themeName)
 		theme = themes["default"]
 	}
 	theme.Font = resolveFont(fontName, log)
+	if accentColorName != "" {
+		overrideAccentColor(theme, accentColorName, log)
+	}
 	return theme
+}
+
+// paletteColor returns the palette color value for the given name from a ThemeColors.
+func paletteColor(c *ThemeColors, name string) (string, bool) {
+	switch strings.ToLower(name) {
+	case "red":
+		return c.Red, true
+	case "orange":
+		return c.Orange, true
+	case "yellow":
+		return c.Yellow, true
+	case "green":
+		return c.Green, true
+	case "blue":
+		return c.Blue, true
+	case "purple":
+		return c.Purple, true
+	case "cyan":
+		return c.Cyan, true
+	default:
+		return "", false
+	}
+}
+
+// overrideAccentColor replaces the accent color in both light and dark
+// theme variants with the named palette color.
+func overrideAccentColor(theme *Theme, colorName string, log *slog.Logger) {
+	if val, ok := paletteColor(theme.Light, colorName); ok {
+		theme.Light.Accent = val
+	} else {
+		log.Warn("Unknown accent color name, leaving accent unchanged", "name", colorName)
+		return
+	}
+	if val, ok := paletteColor(theme.Dark, colorName); ok {
+		theme.Dark.Accent = val
+	}
 }
 
 // resolveFont looks up font data by name.

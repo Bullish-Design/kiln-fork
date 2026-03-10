@@ -30,6 +30,7 @@ const (
 	DefaultDisableTOC        = false
 	DefaultDisableLocalGraph = false
 	DefaultLang              = "en"
+	DefaultAccentColor       = "" // Empty means use the theme's built-in accent
 )
 
 // Flag names
@@ -59,6 +60,8 @@ const (
 	FlagDisableLocalGraph = "disable-local-graph"
 	FlagLang              = "lang"
 	FlagLangShort         = "g"
+	FlagAccentColor       = "accent-color"
+	FlagAccentColorShort  = "a"
 )
 
 // Global variables to store the values of command-line flags.
@@ -77,6 +80,7 @@ var (
 	disableTOC        bool   // Disable the Table of contents
 	disableLocalGraph bool   // Disable the local graph
 	lang              string // Language code for the site
+	accentColor       string // Accent color override from theme palette
 )
 
 // Init constructs and returns the root command for the application.

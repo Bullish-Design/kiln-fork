@@ -28,7 +28,7 @@ func buildDefault(log *slog.Logger) {
 	start := time.Now()
 
 	// Resolves the theme
-	theme := ResolveTheme(ThemeName, FontName, log)
+	theme := ResolveTheme(ThemeName, FontName, AccentColorName, log)
 
 	// Resolves and loads layout
 	layout := resolveLayout(LayoutName, log)

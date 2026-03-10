@@ -53,7 +53,7 @@ func runGenerate() {
 	handler := log.New(os.Stderr)
 	handler.SetReportTimestamp(true)
 	handler.SetFormatter(log.TextFormatter)
-	theme := builder.ResolveTheme(themeName, "", slog.New(handler))
+	theme := builder.ResolveTheme(themeName, "", "", slog.New(handler))
 	handler.Info("Generating palette for theme", "name", themeName)
 
 	// Setup Image Canvas
