@@ -1,112 +1,76 @@
 -- DwightAuto decomposition output
--- Request: I would like to add a new thing in the kiln.yaml configuration file, which is the accent color. We have different themes to generate the websites, but I decided which accent color to use. I would like
--- Timestamp: Tue 10 Mar 2026 06:26:55 PM CET
+-- Request: Read the features under docs and create a new file for the accent color that documents how the accent color works.
+-- Timestamp: Tue 10 Mar 2026 06:44:16 PM CET
 
-Now I have a comprehensive understanding of the codebase. Let me trace the full flow:
-
-1. `kiln.yaml` → `config.Config` struct (parsed via yaml tags)
-2. CLI flags + config → `builder.*` globals
-3. `builder.ResolveTheme(themeName, fontName)` → `*Theme` with `Light.Accent` and `Dark.Accent` set from theme registry
-4. The `Accent` field flows through `toTemplTheme` → `templates.ThemeColors.Accent` → CSS `--accent-color` variable via `writeColorVars()`
-
-The user wants to let users pick which palette color (Red, Orange, Yellow, Green, Blue, Purple, Cyan) to use as the accent color. This means:
-- A new `accent-color` field in `kiln.yaml` 
-- After resolving the theme, if the user specified an accent color, override `theme.Light.Accent` and `theme.Dark.Accent` with the corresponding palette color from the theme
-- The existing CSS variable system (`--accent-color`) already propagates automatically
+Now I have a thorough understanding of the accent color feature and the documentation style. This is a documentation-only task — creating a single new Markdown file. It's straightforward enough that it doesn't need decomposition into multiple sub-tasks; however, the developer asked for decomposition, so I'll structure it minimally.
 
 <tasks>
-<task order="1" title="Add accent-color to Config and tests">
-Add the `accent-color` field to the config system and update tests.
+<task order="1" title="Research accent color implementation across codebase">
+Read the following files to understand how the accent color feature works end-to-end. Take detailed notes on what you find — you will use them in the next task to write documentation.
 
-**What to do:**
+Files to read:
+1. `internal/config/config.go` — look at the `AccentColor` field in the `Config` struct and the `ValueOr` method's `"accent-color"` case
+2. `internal/cli/commands.go` — look at `DefaultAccentColor`, `FlagAccentColor`, `FlagAccentColorShort`, and the `accentColor` variable
+3. `internal/cli/generate.go` — look at how `accentColor` flag is registered (description, short flag `-a`), applied via `applyStringFlag`, and wired to `builder.AccentColorName`
+4. `internal/builder/builder.go` — look at the `AccentColorName` package variable
+5. `internal/builder/themes.go` — look at `ResolveTheme` (how it calls `overrideAccentColor`), `paletteColor` (the switch with valid color names: red, orange, yellow, green, blue, purple, cyan), and `overrideAccentColor` (how it replaces `theme.Light.Accent` and `theme.Dark.Accent`)
+6. `internal/templates/helpers.go` — look at `writeColorVars` and how `--accent-color` CSS variable is set from `c.Accent`
+7. `kiln.yaml` — see the commented-out `# accent-color: blue` example
+8. `assets/shared.css` — see how `var(--accent-color)` is used in CSS (scrollbar hover, etc.)
 
-1. Edit `internal/config/config.go`:
-   - Add `AccentColor string \`yaml:"accent-color"\`` field to the `Config` struct (after `Lang string \`yaml:"lang"\``)
-   - Add a `"accent-color"` case to the `ValueOr` switch statement that returns `c.AccentColor`
+Also read these existing doc files to understand the documentation style/format used (frontmatter with title/description, heading structure, tables, configuration examples with bash code blocks, references to other docs via `[[wikilinks]]`):
+- `docs/Features/User Interface/Themes.md`
+- `docs/Features/User Interface/Fonts.md`
+- `docs/Features/I18n.md`
 
-2. Edit `internal/config/config_test.go`:
-   - In `TestLoad_ValidFile`: add `accent-color: blue` to the test YAML content, and add an assertion: `if cfg.AccentColor != "blue" { t.Errorf(...) }`
-   - In `TestLoad_PartialFile`: add assertion that `cfg.AccentColor` is empty string (zero value)
-   - In `TestLoad_EmptyFile`: add assertion that `cfg.AccentColor` is empty string
-   - In `TestValueOr_OnlyOverridesEmpty`: add a test case for `accent-color` — set `AccentColor: "red"` in the Config struct, verify `ValueOr("accent-color", "")` returns `"red"`, and verify that when AccentColor is empty, `ValueOr("accent-color", "")` returns `""`
-
-3. Edit `internal/config/config_integration_test.go`:
-   - In `TestConfigIntegration_FullPipeline`: add `accent-color: green` to the YAML content and assert `cfg.AccentColor == "green"`
-   - Add a `ValueOr` assertion: `cfg.ValueOr("accent-color", "") == "green"`
-
-**Verify:** `go test ./internal/config/...`
+Summarize all findings — do NOT write any files yet.
 </task>
+<task order="2" title="Write Accent Color documentation file" depends_on="1">
+Create a new documentation file at `docs/Features/User Interface/Accent Color.md`.
 
-<task order="2" title="Add AccentColorName to builder and CLI wiring" depends_on="1">
-Wire the new `accent-color` config field through CLI flags and builder globals, and add the accent color override logic to `ResolveTheme`.
+Follow the exact style and format of the existing docs at `docs/Features/User Interface/Themes.md`, `docs/Features/User Interface/Fonts.md`, and `docs/Features/I18n.md`. The format uses:
+- YAML frontmatter with `title` and `description` fields
+- A top-level `#` heading matching the title
+- Sections with `##` subheadings
+- Tables for structured data
+- Bash code blocks for CLI examples
+- YAML code blocks for config file examples
+- `[[wikilinks]]` to reference related docs (like `[[generate]]`, `[[Configuration File]]`, `[[Themes]]`)
 
-**What to do:**
+The document should cover these sections:
 
-1. Edit `internal/cli/commands.go`:
-   - Add a default constant: `DefaultAccentColor = ""` (empty string means "use the theme's built-in accent")
-   - Add flag name constants: `FlagAccentColor = "accent-color"` and `FlagAccentColorShort = "a"`
-   - Add a CLI variable: `accentColor string`
+**1. Intro paragraph** — Explain that by default, each theme comes with its own built-in accent color (used for links, active states, scrollbar hovers, and other interactive elements). The accent color feature lets you override this default with any color from the theme's own palette, keeping visual harmony while personalizing your site.
 
-2. Edit `internal/cli/generate.go`:
-   - Add a new flag registration in `init()`:
-     ```go
-     cmdGenerate.Flags().StringVarP(&accentColor, FlagAccentColor, FlagAccentColorShort, DefaultAccentColor, "Accent color from theme palette (red, orange, yellow, green, blue, purple, cyan)")
-     ```
-   - In `runGenerate`, add `applyStringFlag(cmd, FlagAccentColor, &accentColor, cfg, DefaultAccentColor)` after the existing applyStringFlag calls
-   - Add `builder.AccentColorName = accentColor` after the existing builder assignments
+**2. How it works** — Explain the mechanics:
+- Each theme defines a palette of 7 named colors: red, orange, yellow, green, blue, purple, cyan
+- When you set an accent color, Kiln replaces the theme's default accent in both light and dark mode variants with the palette color matching that name
+- The override happens at build time — the chosen color is baked directly into the CSS custom property `--accent-color`
+- If the color name is not recognized, Kiln logs a warning and keeps the theme's original accent
 
-3. Edit `internal/builder/builder.go`:
-   - Add `AccentColorName string` to the `var` block (the package-level globals), with comment `// Accent color override (palette color name)`
+**3. Available colors** — A table listing the 7 valid color names:
 
-4. Edit `internal/builder/themes.go`:
-   - Change `ResolveTheme` signature to: `func ResolveTheme(themeName, fontName, accentColorName string, log *slog.Logger) *Theme`
-   - Inside `ResolveTheme`, after resolving the font, add accent color override logic:
-     ```go
-     if accentColorName != "" {
-         overrideAccentColor(theme, accentColorName, log)
-     }
-     ```
-   - Add a new function `overrideAccentColor(theme *Theme, colorName string, log *slog.Logger)` that:
-     - Creates a map `colorMap` of palette color names to getter functions, or use a switch statement
-     - For light theme: looks up `colorName` (lowercased) against the palette colors (Red, Orange, Yellow, Green, Blue, Purple, Cyan) of `theme.Light` and sets `theme.Light.Accent` to that value
-     - For dark theme: does the same with `theme.Dark`
-     - If the color name is not recognized, logs a warning and leaves the accent unchanged
-     - Implementation approach using a helper:
-       ```go
-       func paletteColor(c *ThemeColors, name string) (string, bool) {
-           switch strings.ToLower(name) {
-           case "red":    return c.Red, true
-           case "orange": return c.Orange, true
-           case "yellow": return c.Yellow, true
-           case "green":  return c.Green, true
-           case "blue":   return c.Blue, true
-           case "purple": return c.Purple, true
-           case "cyan":   return c.Cyan, true
-           default:       return "", false
-           }
-       }
-       ```
+| Name | Description |
+|:-----|:------------|
+| `red` | Red from the theme palette |
+| `orange` | Orange from the theme palette |
+| `yellow` | Yellow from the theme palette |
+| `green` | Green from the theme palette |
+| `blue` | Blue from the theme palette |
+| `purple` | Purple from the theme palette |
+| `cyan` | Cyan from the theme palette |
 
-5. Update callers of `ResolveTheme` — there are two:
-   - `internal/builder/builder_default.go` line 31: change `ResolveTheme(ThemeName, FontName, log)` to `ResolveTheme(ThemeName, FontName, AccentColorName, log)`
-   - `internal/builder/builder_custom.go`: search for `ResolveTheme` call and update similarly
+Add a note that the actual hex values depend on the chosen [[Themes|theme]] — for example, `red` in Dracula is `#ff5555` while in Nord it's `#bf616a`.
 
-**Verify:** `go test ./...`
-</task>
+**4. Configuration** — Show how to set it:
+- CLI flag: `kiln generate --accent-color blue` (short form `-a`)
+- Config file (`kiln.yaml`): `accent-color: blue`
+- Reference that CLI flags override the [[Configuration File]]
+- Show a combined example: `kiln generate --theme dracula --accent-color cyan`
 
-<task order="3" title="Update kiln.yaml with accent-color example" depends_on="2">
-Update the project's `kiln.yaml` to document the new `accent-color` option.
+**5. Default behavior** — One short paragraph: if no accent color is specified, each theme uses its own built-in accent color (e.g., `#7e6df7` for the default theme, `#ff79c6` for Dracula).
 
-**What to do:**
+This file does NOT get a `@feature:` pragma — it is a Markdown documentation file in the docs vault, not a source code file.
 
-1. Edit `kiln.yaml` at the project root — add a commented-out `accent-color` line after the `theme` line:
-   ```yaml
-   theme: "dracula"
-   # accent-color: blue
-   font: inter
-   ```
-   The comment serves as documentation for users. The available values are: red, orange, yellow, green, blue, purple, cyan. When unset, the theme's default accent color is used.
-
-**Verify:** `go test ./...` (ensure nothing broke)
+After writing the file, verify it exists and has the correct structure by reading it back.
 </task>
 </tasks>
