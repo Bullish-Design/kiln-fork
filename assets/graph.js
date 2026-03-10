@@ -395,4 +395,25 @@
       htmx.process(container);
     }
   }
+
+  // Listen for graph overlay open and render local graph into the modal
+  window.addEventListener("graph-overlay-opened", function () {
+    var modalContainer = document.getElementById("graph-modal-container");
+    if (!modalContainer) return;
+    if (!graphDataPromise) return;
+
+    graphDataPromise.then(function (data) {
+      if (!data) return;
+      var pageTitleEl = document.getElementById("page-title-data");
+      if (!pageTitleEl) return;
+      var currentTitle = pageTitleEl.dataset.title;
+      var localData = filterLocalData(
+        JSON.parse(JSON.stringify(data)),
+        currentTitle,
+      );
+      if (localData.nodes.length > 0) {
+        renderGraph(modalContainer, localData, true);
+      }
+    });
+  });
 })();
