@@ -909,22 +909,13 @@ body {
     overflow: hidden;
   }
 }
-#local-graph-wrapper {
+.expanded #local-graph-wrapper {
   position: fixed;
-  bottom: 0;
-  right: 0;
-  width: 18rem;
-  padding: 1rem;
-  z-index: 51;
-  background-color: var(--sidebar-bg);
-}
-@media (max-width: 1279px) {
-  #local-graph-wrapper {
-    display: none;
-  }
-}
-#right-sidebar.collapsed ~ #local-graph-wrapper {
-  display: none;
+  inset: 0;
+  z-index: 10000;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
 }
 .expanded #local-graph-container {
   position: fixed;
@@ -937,6 +928,7 @@ body {
   border-radius: 0.5rem;
   border: 2px solid var(--accent-color);
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+  aspect-ratio: auto;
 }
 .expanded::before {
   content: "";
