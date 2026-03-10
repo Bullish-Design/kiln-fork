@@ -1213,3 +1213,41 @@ details.callout[open] > summary .callout-title::after {
 #local-graph-wrapper.closing {
   animation: kiln-fade-out 120ms ease-in forwards;
 }
+
+/* BACK TO TOP */
+.back-to-top {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--sidebar-border);
+  background: var(--bg-color);
+  color: var(--text-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.back-to-top.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.back-to-top:hover {
+  background: var(--hover-color);
+  color: var(--accent-color);
+}
+.back-to-top svg {
+  transition: transform 0.2s ease;
+}
+.back-to-top:hover svg {
+  transform: translateY(-2px);
+}

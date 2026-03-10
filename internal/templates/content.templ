@@ -591,6 +591,15 @@ templ SimpleMenu(data *PageData) {
 	</div>
 }
 
+// BackToTop renders a fixed "back to top" button with an animated SVG arrow.
+templ BackToTop() {
+	<button id="back-to-top" class="back-to-top" onclick="document.getElementById('content').scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top" title="Back to top">
+		<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="m18 15-6-6-6 6"></path>
+		</svg>
+	</button>
+}
+
 // tableRow renders a single row in the base table view.
 templ tableRow(data *PageData, note *obsidian.File) {
 	<tr class="hover:bg-hover transition-colors">

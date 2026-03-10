@@ -110,6 +110,7 @@ templ DefaultLayout(data *PageData) {
 				@ContentFolder(data)
 				@ContentTag(data)
 				@Content404(data)
+				@BackToTop()
 			</main>
 			<!-- Right sidebar -->
 			if !data.Site.DisableLocalGraph || !data.Site.DisableTOC {
