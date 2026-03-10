@@ -29,8 +29,8 @@ func ReadingTimeFromWords(wordCount int) int {
 }
 
 // FormatReadingTime returns a human-readable reading time string.
-func FormatReadingTime(minutes int) string {
-	return fmt.Sprintf("%d min read", minutes)
+func FormatReadingTime(minutes int, format string) string {
+	return fmt.Sprintf(format, minutes)
 }
 
 // toStr safely converts an interface value to a string.

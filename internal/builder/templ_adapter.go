@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/otaleghani/kiln/internal/i18n"
 	"github.com/otaleghani/kiln/internal/obsidian"
 	"github.com/otaleghani/kiln/internal/templates"
 )
@@ -36,6 +37,7 @@ func toTemplPageData(p *DefaultSitePageData) *templates.PageData {
 			DisableTOC:        p.Site.DisableTOC,
 			FlatURLs:          p.Site.FlatURLs,
 			Lang:              p.Site.Lang,
+			Labels:            i18n.Resolve(p.Site.Lang),
 		},
 	}
 

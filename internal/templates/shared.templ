@@ -2,13 +2,14 @@
 package templates
 
 import (
+	"github.com/otaleghani/kiln/internal/i18n"
 	"github.com/otaleghani/kiln/internal/obsidian"
 )
 
-templ ThemeToggler() {
+templ ThemeToggler(labels *i18n.Labels) {
 	<button
 		id="theme-toggle"
-		aria-label="Toggle theme"
+		aria-label={ labels.ToggleTheme }
 		class="cursor-pointer p-1 rounded hover:bg-hover transition-colors"
 	>
 		<!-- Sun -->

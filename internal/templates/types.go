@@ -4,6 +4,7 @@ package templates
 import (
 	"time"
 
+	"github.com/otaleghani/kiln/internal/i18n"
 	"github.com/otaleghani/kiln/internal/obsidian"
 	"github.com/otaleghani/kiln/internal/obsidian/bases"
 )
@@ -49,6 +50,7 @@ type SiteData struct {
 	DisableTOC        bool
 	FlatURLs          bool
 	Lang              string
+	Labels            *i18n.Labels
 }
 
 // ThemeData bundles color schemes and typography for the site.

@@ -42,16 +42,16 @@ templ SimpleLayout(data *PageData) {
 					@SimpleBreadcrumbs(data.Breadcrumbs, data.Site.SiteName)
 				</div>
 				<div class="flex gap-2 items-center">
-					@SimpleSearchButton()
-					@ThemeToggler()
+					@SimpleSearchButton(data.Site.Labels)
+					@ThemeToggler(data.Site.Labels)
 					if !data.Site.DisableTOC && data.TOC != "" {
-						@SimpleTOCButton()
+						@SimpleTOCButton(data.Site.Labels)
 					}
 					if !data.Site.DisableLocalGraph && !data.IsGraph {
-						@SimpleLocalGraphButton()
+						@SimpleLocalGraphButton(data.Site.Labels)
 					}
 					@GraphButton(data.Site.BaseURL)
-					@SimpleMenuButton()
+					@SimpleMenuButton(data.Site.Labels)
 				</div>
 			</header>
 			<!-- Main content -->
@@ -64,7 +64,7 @@ templ SimpleLayout(data *PageData) {
 				@ContentFolder(data)
 				@ContentTag(data)
 				@Content404(data)
-				@BackToTop()
+				@BackToTop(data.Site.Labels)
 			</main>
 			@SimpleMenu(data)
 			if !data.Site.DisableTOC {

@@ -57,7 +57,7 @@ templ DefaultLayout(data *PageData) {
 				>
 					<a class="font-bold" href={ templ.SafeURL(data.Site.BaseURL) }>{ data.Site.SiteName }</a>
 					<div class="flex items-center gap-1">
-						@ThemeToggler()
+						@ThemeToggler(data.Site.Labels)
 						<div class="xl:hidden flex items-center">
 							@LeftSidebarToggle()
 						</div>
@@ -71,7 +71,7 @@ templ DefaultLayout(data *PageData) {
 					>
 						<div class="flex items-center gap-2">
 							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-60"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-							<span class="opacity-60">Search notes...</span>
+							<span class="opacity-60">{ data.Site.Labels.SearchPlaceholder }</span>
 						</div>
 						<span class="opacity-40 text-xs" id="search-shortcut-hint"></span>
 					</button>
@@ -82,7 +82,7 @@ templ DefaultLayout(data *PageData) {
 					</ul>
 				</div>
 				<footer class="p-6 text-sm text-center item-end">
-					Generated with
+					{ data.Site.Labels.GeneratedWith }
 					<a href="https://kiln.talesign.com" target="_blank" class="underline">Kiln</a>
 					{ " • " }
 					<a href="https://github.com/otaleghani/kiln" target="_blank" class="underline">Github</a>
@@ -110,7 +110,7 @@ templ DefaultLayout(data *PageData) {
 				@ContentFolder(data)
 				@ContentTag(data)
 				@Content404(data)
-				@BackToTop()
+				@BackToTop(data.Site.Labels)
 			</main>
 			<!-- Right sidebar -->
 			if !data.Site.DisableLocalGraph || !data.Site.DisableTOC {
@@ -135,7 +135,7 @@ templ DefaultLayout(data *PageData) {
 						</div>
 					</header>
 					if !data.Site.DisableLocalGraph {
-						@LocalGraph(data.Site.DisableLocalGraph)
+						@LocalGraph(data.Site.DisableLocalGraph, data.Site.Labels)
 					}
 					<div id="right-sidebar-content" class="p-4 flex-1 overflow-y-auto flex flex-col gap-8">
 						@TOCPanel(data)

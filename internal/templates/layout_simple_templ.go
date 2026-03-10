@@ -162,22 +162,22 @@ func SimpleLayout(data *PageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = SimpleSearchButton().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = SimpleSearchButton(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = ThemeToggler().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = ThemeToggler(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !data.Site.DisableTOC && data.TOC != "" {
-			templ_7745c5c3_Err = SimpleTOCButton().Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SimpleTOCButton(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if !data.Site.DisableLocalGraph && !data.IsGraph {
-			templ_7745c5c3_Err = SimpleLocalGraphButton().Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SimpleLocalGraphButton(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -186,7 +186,7 @@ func SimpleLayout(data *PageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = SimpleMenuButton().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = SimpleMenuButton(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -226,7 +226,7 @@ func SimpleLayout(data *PageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = BackToTop().Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = BackToTop(data.Site.Labels).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
