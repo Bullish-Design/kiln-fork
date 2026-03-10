@@ -1,92 +1,94 @@
 -- DwightAuto decomposition output
--- Request: We need to fix a layout problem. In desktop, when we close both the sidebars and then press a link, the `<main>` tag transitions to the left. If I try to open the left sidebar again it is over the scr
--- Timestamp: Tue 10 Mar 2026 08:17:18 AM CET
+-- Request: The local graph button that makes it bigger `window.toggleGraphExpand()` is now relative to the right sidebar. It should be relative to the hole page. We then need to make the left sidebar scrollable 
+-- Timestamp: Tue 10 Mar 2026 09:35:40 AM CET
 
-Now I have a clear understanding of the bug. Let me analyze:
-
-**The Root Cause:**
-
-The layout uses `<body class="flex">` with three children: `<nav>` (left sidebar), `<main class="flex-1">`, and `<aside>` (right sidebar). The sidebars are `xl:relative` on desktop.
-
-When sidebars are collapsed, CSS uses `transform: translateX(-100%)` / `translateX(100%)` to hide them. But `transform` does NOT remove them from document flow — they still occupy their `w-72` (288px) space in the flex layout. The sidebars just visually move off-screen.
-
-When HTMX swaps the `<main>` (via `outerHTML`), the flex layout recalculates. Since the collapsed sidebars still take up 288px each but are visually off-screen, the `<main>` element gets squeezed and positioned incorrectly. The flex container distributes space accounting for the invisible sidebars.
-
-The fix needs to actually remove collapsed sidebars from the flex flow on desktop — using `width: 0` and `overflow: hidden` (or `min-width: 0; flex: 0`) alongside the transform, so they don't occupy space.
+Here's the decomposition into 3 sequential sub-tasks:
 
 <tasks>
-<task order="1" title="Fix collapsed sidebar CSS to remove from flex flow">
-We need to fix a layout bug in the default layout. The bug: on desktop (xl breakpoint, >= 1280px), when both sidebars are collapsed and a user clicks an internal link (triggering an HTMX swap of `<main id="kiln-main">`), the `<main>` element shifts to the left. Re-opening the left sidebar shows it off-screen to the left. Opening the right sidebar resets everything.
+<task order="1" title="Fix graph expand to be page-relative">
+The local graph expand button (`window.toggleGraphExpand()`) currently toggles the `expanded` class on `#local-graph-wrapper`, which is inside `#right-sidebar`. This causes the fixed-position overlay and expanded graph to be relative to the sidebar instead of the full page.
 
-**Root cause:** The collapsed sidebars use `transform: translateX(±100%)` to visually hide, but `transform` does NOT remove elements from document flow. The sidebars still occupy their `w-72` (288px) width in the flex layout. When HTMX swaps the `<main>` element, the flex container recalculates and distributes space incorrectly because it accounts for the invisible sidebar widths.
+**Fix**: Change `toggleGraphExpand()` to toggle the `expanded` class on `document.body` instead of on `#local-graph-wrapper`. Then update the CSS selectors accordingly.
 
-**Fix:** Add `width: 0; overflow: hidden;` to the collapsed sidebar CSS rules so they are removed from the flex flow, not just visually translated off-screen.
+Files to edit:
 
-**Files to edit:**
-
-1. `assets/default_style_input.css` — This is the Tailwind CSS source file (lines 40-66 contain the sidebar collapse rules). Update the `@media (width >= 80rem)` block:
-   - Change `#left-sidebar.collapsed` to add `width: 0; min-width: 0; overflow: hidden;`
-   - Change `#right-sidebar.collapsed` to add `width: 0; min-width: 0; overflow: hidden;`
-   - Keep the existing `transform`, `opacity`, and `pointer-events: none` rules
-
-   Current CSS for `#left-sidebar.collapsed`:
-   ```css
-   #left-sidebar.collapsed {
-     transform: translateX(-100%);
-     opacity: 0;
-     pointer-events: none;
-   }
+1. **`assets/default_app.js`** — Lines 251-255. Change:
+   ```js
+   window.toggleGraphExpand = function () {
+     const wrapper = document.getElementById("local-graph-wrapper");
+     if (!wrapper) return;
+     wrapper.classList.toggle("expanded");
+   };
+   ```
+   To:
+   ```js
+   window.toggleGraphExpand = function () {
+     document.body.classList.toggle("expanded");
+   };
    ```
 
-   Should become:
-   ```css
-   #left-sidebar.collapsed {
-     transform: translateX(-100%);
-     opacity: 0;
-     pointer-events: none;
-     width: 0;
-     min-width: 0;
-     overflow: hidden;
-   }
-   ```
+2. **`assets/default_style_input.css`** — The `.expanded header button` selector will be too broad on `body` — it would target ALL header buttons. Change it to `.expanded #local-graph-wrapper header button`. The other two selectors (`.expanded #local-graph-container` and `.expanded::before`) remain unchanged — they still work because `body.expanded` is an ancestor of `#local-graph-container`.
 
-   Same for `#right-sidebar.collapsed` (change `translateX(100%)` stays the same, just add the width/overflow rules).
+3. **`assets/simple_style_input.css`** — Apply the same `.expanded header button` → `.expanded #local-graph-wrapper header button` change.
 
-2. `assets/default_style.css` — This is the compiled/built CSS output. Apply the exact same changes to the `@media (width >= 80rem)` block (lines 844-866). The rules for `#left-sidebar.collapsed` and `#right-sidebar.collapsed` need the same `width: 0; min-width: 0; overflow: hidden;` additions.
+4. **`assets/default_style.css`** (compiled Tailwind) — Lines 896-903. Change `.expanded header button` to `.expanded #local-graph-wrapper header button`.
 
-**Also add transition for width** in the transition rules so the sidebar collapse/expand animates smoothly:
-   - In `default_style_input.css`, update both transition rules to include `width`:
-     ```css
-     #left-sidebar, #right-sidebar {
-       transition: none;
-       will-change: transform, opacity, width;
-     }
-     .animate-ready #left-sidebar,
-     .animate-ready #right-sidebar {
-       transition: transform 200ms ease-out, opacity 200ms ease-out, width 200ms ease-out;
-     }
-     ```
-   - Apply the same in `default_style.css`.
-
-**Verify:** After making these changes, manually test by building the project (`go test ./...` to ensure nothing breaks). The CSS-only changes don't have unit tests, but the Go tests should still pass.
-
-**Verify command:** `go test ./...`
+Verify with: `go test ./...`
 </task>
-<task order="2" title="Fix simple layout CSS for same sidebar collapse bug" depends_on="1">
-The same sidebar collapse bug may exist in the simple layout. Check `assets/simple_style_input.css` and `assets/simple_style.css` for similar collapsed sidebar rules that use `transform: translateX()` without removing the element from flex flow.
+<task order="2" title="Add scrollbar styles to left sidebar" depends_on="1">
+The left sidebar's scrollable navigation area uses the browser's default scrollbar. It should use the same thin scrollbar as `#content` and `#search-modal-results` in `assets/shared.css`.
 
-**Context:** The default layout fix in task 1 added `width: 0; min-width: 0; overflow: hidden;` to the `#left-sidebar.collapsed` and `#right-sidebar.collapsed` rules inside `@media (width >= 80rem)`. The simple layout may have the same issue.
+The left sidebar's scrollable div is in `internal/templates/layout_default.templ` line 66: `<div class="p-6 flex-1 overflow-y-auto flex flex-col gap-2">`. It has no ID.
 
-**Files to check and potentially edit:**
+Files to edit:
 
-1. `assets/simple_style_input.css` — Check if there is a `@media (width >= 80rem)` block with `#left-sidebar.collapsed` and `#right-sidebar.collapsed` rules. If so, apply the same fix: add `width: 0; min-width: 0; overflow: hidden;` and update the `will-change` and `transition` properties to include `width`.
+1. **`internal/templates/layout_default.templ`** — Line 66. Add `id="left-sidebar-nav"`:
+   ```
+   <div id="left-sidebar-nav" class="p-6 flex-1 overflow-y-auto flex flex-col gap-2">
+   ```
 
-2. `assets/simple_style.css` — Apply matching changes to the compiled output if sidebar collapse rules exist.
+2. **`assets/shared.css`** — After the `#content` scrollbar styles (line ~37), add:
+   ```css
+   #left-sidebar-nav {
+     scrollbar-width: thin;
+     scrollbar-color: var(--sidebar-border) transparent;
+   }
+   #left-sidebar-nav::-webkit-scrollbar { width: 8px; }
+   #left-sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+   #left-sidebar-nav::-webkit-scrollbar-thumb { background-color: var(--sidebar-border); border-radius: 4px; }
+   #left-sidebar-nav::-webkit-scrollbar-thumb:hover { background-color: var(--accent-color); }
+   ```
 
-3. `assets/simple_app.js` — Read this file to check if the simple layout has the same sidebar toggle JS logic. If it shares the same sidebar IDs and collapsed class, the CSS fix is sufficient.
+Verify with: `go test ./...`
+</task>
+<task order="3" title="Make right sidebar scrollable with styled scrollbar" depends_on="2">
+The right sidebar content area (containing local graph + TOC) is not scrollable. Long TOCs overflow and shift the layout.
 
-If the simple layout does NOT have collapsible desktop sidebars (some layouts may only have mobile sidebars), then no changes are needed. Just verify.
+The right sidebar content div is in `internal/templates/layout_default.templ` line 136: `<div class="p-4 flex flex-col gap-8">`. It needs `overflow-y-auto`, `flex-1`, and an ID for scrollbar styling.
 
-**Verify command:** `go test ./...`
+Files to edit:
+
+1. **`internal/templates/layout_default.templ`** — Line 136. Change:
+   ```
+   <div class="p-4 flex flex-col gap-8">
+   ```
+   To:
+   ```
+   <div id="right-sidebar-content" class="p-4 flex-1 overflow-y-auto flex flex-col gap-8">
+   ```
+
+2. **`assets/shared.css`** — After the `#left-sidebar-nav` scrollbar styles (added in task 2), add:
+   ```css
+   #right-sidebar-content {
+     scrollbar-width: thin;
+     scrollbar-color: var(--sidebar-border) transparent;
+   }
+   #right-sidebar-content::-webkit-scrollbar { width: 8px; }
+   #right-sidebar-content::-webkit-scrollbar-track { background: transparent; }
+   #right-sidebar-content::-webkit-scrollbar-thumb { background-color: var(--sidebar-border); border-radius: 4px; }
+   #right-sidebar-content::-webkit-scrollbar-thumb:hover { background-color: var(--accent-color); }
+   ```
+
+Verify with: `go test ./...`
 </task>
 </tasks>
