@@ -25,7 +25,7 @@ These features were on the roadmap and have since been shipped:
 - [x] **Image Optimization:** Automatic WebP conversion and responsive image sizing to improve page load speed.
 - [ ] **Localization:** i18n support for translating the UI into multiple languages.
 - [x] **Structured Data:** Automatically generate JSON-LD schema markup for articles and breadcrumbs to improve search engine visibility.
-- [ ] Support for other kinds of links, not only wikilinks 
+- [x] Support for other kinds of links, not only wikilinks 
 
 ## UI & UX Improvements
 *Enhancing the reading and navigation experience.*
@@ -33,7 +33,7 @@ These features were on the roadmap and have since been shipped:
 - [x] **Page Transitions:** Smooth View Transitions API support to complement the existing [client-side navigation](./Features/Navigation/Client Side Navigation.md).
 - [x] **Link Previews:** Obsidian-style hover previews when mousing over [wikilinks](./Features/Navigation/Wikilinks.md).
 - [x] **Full-Text Search:** Fuzzy finder with content search to go beyond the current name-based [search](./Features/Navigation/Search.md).
-- [ ] **Navigation Enhancements:** "Back to Top" buttons and improved breadcrumb trails.
+- [x] **Navigation Enhancements:** "Back to Top" buttons and improved breadcrumb trails.
 - [x] **Animations:** Subtle CSS animations for interactive elements.
 - [ ] **Canvas Colors:** Custom color support for [Canvas](./Features/Rendering/Obsidian Canvas.md) nodes.
 

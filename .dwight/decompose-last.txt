@@ -1,236 +1,168 @@
 -- DwightAuto decomposition output
--- Request: I would like to add a "Back to top" button on the main tag. Make it small, with a svg of an arrow. Make it animated. Also add reading metadata on top of the notes, something like "Last updated", "Crea
--- Timestamp: Tue 10 Mar 2026 11:34:09 AM CET
+-- Request: The "Back to the top" button should appear inside the `<main>` tag. Then implement localization: a user could decide the language of the site, this adds the lang attribute in the html tag and changes 
+-- Timestamp: Tue 10 Mar 2026 02:23:37 PM CET
 
-Now I have a complete picture. Let me produce the decomposition.
+
+
+I have all the context I need. Let me finish the decomposition concisely.
 
 <tasks>
-<task order="1" title="Add WordCount and ReadingTime to PageData">
-Extend the template data types and the adapter to pass reading metadata (word count, reading time, created/modified dates) from the builder to templates.
+<task order="1" title="Move BackToTop button visually inside main">
+The BackToTop button is already inside `<main>` in the DOM (line 113 of `layout_default.templ`, line 67 of `layout_simple.templ`), but CSS `position: fixed` makes it overlap the right sidebar on desktop. Fix this so the button appears visually within the main content area.
 
 **Files to edit:**
 
-1. **`internal/templates/types.go`** — Add a `NoteMeta` struct and a `Meta *NoteMeta` field to `PageData`:
+1. **`internal/templates/layout_default.templ`** (line 92): Add `layout-default` class to `<main>`:
+   - Change: `<main class="flex-1 flex flex-col h-dvh overflow-hidden" id="kiln-main">`
+   - To: `<main class="flex-1 flex flex-col h-dvh overflow-hidden layout-default" id="kiln-main">`
+
+2. **`assets/shared.css`** (after line 1253, end of `.back-to-top` rules): Add a media query so the button shifts left when the right sidebar is visible (288px = w-72):
+   ```css
+   @media (min-width: 1280px) {
+     .layout-default .back-to-top {
+       right: calc(288px + 1.5rem);
+     }
+   }
+   ```
+
+3. **Regenerate templ**: Run `templ generate` from project root.
+
+**Verify**: `go build ./...` and `go test ./...`
+</task>
+
+<task order="2" title="Add lang CLI flag and config plumbing" depends_on="1">
+Add a `lang` option flowing through CLI → config → builder → template types. Default: `"en"`.
+
+**Files to edit:**
+
+1. **`internal/cli/commands.go`**: Add `DefaultLang = "en"` to defaults block (after line 31). Add `FlagLang = "lang"` and `FlagLangShort = "g"` to flag name block (after line 58). Add `lang string` to var block (after line 75).
+
+2. **`internal/cli/generate.go`**: In `init()`, register: `cmdGenerate.Flags().StringVarP(&lang, FlagLang, FlagLangShort, DefaultLang, "Language code for the site (e.g. en, it, fr)")`. In `runGenerate()`, add `applyStringFlag(cmd, FlagLang, &lang, cfg, DefaultLang)` and `builder.Lang = lang`.
+
+3. **`internal/config/config.go`**: Add `Lang string \`yaml:"lang"\`` to Config struct. Add `case "lang": val = c.Lang` to `ValueOr` switch.
+
+4. **`internal/builder/builder.go`**: Add `Lang string` to the var block.
+
+5. **`internal/templates/types.go`**: Add `Lang string` to `SiteData` struct.
+
+6. **`internal/builder/builder_default.go`**: Add `Lang string` to `DefaultSite` struct (~line 863). In `buildDefault()` where DefaultSite is initialized (~line 66), add `Lang: Lang,`.
+
+7. **`internal/builder/templ_adapter.go`**: In `toTemplPageData()`, add `Lang: p.Site.Lang,` to the SiteData block (~line 37).
+
+8. **`internal/templates/layout_default.templ`** (line 6): Change `<html lang="en">` to `<html lang={ data.Site.Lang }>`.
+
+9. **`internal/templates/layout_simple.templ`** (line 6): Change `<html lang="en">` to `<html lang={ data.Site.Lang }>`.
+
+10. **Regenerate templ**: Run `templ generate`.
+
+**Verify**: `go build ./...` and `go test ./...`
+</task>
+
+<task order="3" title="Create i18n package with label registry" depends_on="2">
+Create `internal/i18n/` package with a `Labels` struct and language registry.
+
+**Create `internal/i18n/i18n.go`** — Line 1: `// @feature:layouts Localization label registry for UI strings.`
+
+Define:
 ```go
-type NoteMeta struct {
-    WordCount   int
-    ReadingTime int       // minutes
-    Created     time.Time
-    Modified    time.Time
-    Tags        []string
+type Labels struct {
+    SearchPlaceholder string // "Search notes..."
+    ToggleTheme       string // "Toggle theme"
+    BackToTop         string // "Back to top"
+    OnThisPage        string // "On this page"
+    TableOfContents   string // "Table of contents"
+    LocalGraph        string // "Local Graph"
+    GeneratedWith     string // "Generated with"
+    PageNotFound      string // "Page not found"
+    GoBackHome        string // "Go back home"
+    Folder            string // "Folder:"
+    Tag               string // "Tag:"
+    Updated           string // "Updated"
+    Created           string // "Created"
+    Words             string // "words"
+    MinRead           string // "%d min read" (fmt format)
+    Copy              string // "Copy"
+    NoResults         string // "No results found"
+    Search            string // "Search"
+    Navbar            string // "Navbar"
+    Expand            string // "Expand"
+    LastModified      string // "Last Modified"
 }
 ```
-Add `Meta *NoteMeta` field to the `PageData` struct (after the `Frontmatter` field).
 
-2. **`internal/templates/helpers.go`** — Add a helper function `ReadingTimeFromWords(wordCount int) int` that returns `max(1, wordCount/200)` (200 WPM average). Also add `FormatReadingTime(minutes int) string` that returns e.g. "3 min read". Add `WordCount(content []byte) int` that uses `strings.Fields`.
+Create `var languages = map[string]*Labels{...}` with `"en"` and `"it"` entries filled with appropriate translations.
 
-3. **`internal/builder/templ_adapter.go`** — In `toTemplPageData()`, populate the new `Meta` field when `p.IsNote && p.File != nil`. Calculate word count from `p.File.Content` using the new helper, compute reading time, and populate created/modified from `p.File.Created` / `p.File.Modified`. Extract tags from `p.File.Tags` map keys.
+Create `func Resolve(lang string) *Labels` — returns labels for the given code, falls back to `"en"`.
 
-4. **`internal/builder/builder_default.go`** — No changes needed here since `p.File` is already passed with content and timestamps.
+**Create `internal/i18n/i18n_test.go`** — Line 1: `// @feature:layouts Tests for localization label registry.`
 
-**Verify:** `go build ./...` must succeed. Run `go test ./...` to ensure no regressions.
+Tests:
+- `TestResolve_English`: Resolve("en") returns correct English labels
+- `TestResolve_Italian`: Resolve("it") returns Italian labels
+- `TestResolve_UnknownFallback`: Resolve("xx") returns English labels
+- `TestResolve_AllFieldsPopulated`: Use `reflect` to check no field is empty string for each supported language
 
-**Feature pragma:** All edited files already have `@feature:layouts` or `@feature:builder` pragmas — preserve them.
+**Verify**: `go test ./internal/i18n/...`
 </task>
 
-<task order="2" title="Add reading metadata bar templ component" depends_on="1">
-Create a templ component that renders a reading metadata bar at the top of note content, showing: Last updated, Created, Reading time, Word count, and Tags.
+<task order="4" title="Wire labels into template data and replace hardcoded strings" depends_on="3">
+Pass `Labels` through template data and replace all hardcoded UI strings in `.templ` files and helpers.
 
 **Files to edit:**
 
-1. **`internal/templates/content.templ`** — Add a new templ component `NoteMetaBar(data *PageData)` that renders a metadata bar. It should only render when `data.IsNote && data.Meta != nil`. The component should output:
-```html
-<div class="note-meta-bar">
-    <div class="note-meta-items">
-        <span class="note-meta-item">
-            <svg ...clock icon.../> <!-- small 14x14 SVG -->
-            { FormatReadingTime(data.Meta.ReadingTime) }
-        </span>
-        <span class="note-meta-item">
-            { strconv.Itoa(data.Meta.WordCount) } words
-        </span>
-        <span class="note-meta-item">
-            Updated { FormatDate(data.Meta.Modified) }
-        </span>
-        <span class="note-meta-item">
-            Created { FormatDate(data.Meta.Created) }
-        </span>
-    </div>
-    <div class="note-meta-tags"> (only if len(data.Meta.Tags) > 0)
-        for each tag: <span class="note-meta-tag">#tagname</span>
-    </div>
-</div>
-```
+1. **`internal/templates/types.go`**: Import `"github.com/otaleghani/kiln/internal/i18n"`. Add `Labels *i18n.Labels` to `SiteData` struct (existing fields: BaseURL, SiteName, Theme, NavbarRoot, DisableLocalGraph, DisableTOC, FlatURLs, Lang).
 
-2. **`internal/templates/content.templ`** — Modify the existing `ContentNote` templ component to include `@NoteMetaBar(data)` right BEFORE the `@templ.Raw(data.Content)` line, inside the `<div class="p-4 content">` wrapper. The updated ContentNote should look like:
-```
-templ ContentNote(data *PageData) {
-    if data.IsNote {
-        <div id="content" class="h-dvh overflow-y-auto overflow-x-hidden">
-            <div class="p-4 content">
-                @NoteMetaBar(data)
-                @templ.Raw(data.Content)
-            </div>
-        </div>
-    }
-}
-```
+2. **`internal/builder/templ_adapter.go`**: Import `"github.com/otaleghani/kiln/internal/i18n"`. Add `Labels: i18n.Resolve(p.Site.Lang),` to the SiteData block in `toTemplPageData()`.
 
-Use small inline SVG icons (14x14) for visual elements. Use Lucide-style icons: a clock for reading time, a calendar for dates. Keep styling class-based (classes will be defined in the CSS task).
+3. **`internal/templates/helpers.go`**: Change `FormatReadingTime(minutes int) string` to `FormatReadingTime(minutes int, format string) string` — use `fmt.Sprintf(format, minutes)`.
 
-**Verify:** `go build ./...` must succeed (templ generate must be run first if the project uses templ code generation — check if `_templ.go` files exist and regenerate with `templ generate`). Run `go test ./...`.
+4. **`internal/templates/content.templ`** — Replace hardcoded strings. For components that don't receive `data` (like `BackToTop()`, `SimpleSearchButton()`, `SimpleTOCButton()`, `SimpleLocalGraphButton()`, `SimpleMenuButton()`), change their signature to accept `labels *i18n.Labels`. Then update their call sites in `layout_default.templ` and `layout_simple.templ` to pass `data.Site.Labels`. Key replacements:
+   - `BackToTop()` → `BackToTop(data.Site.Labels)`: use `labels.BackToTop` for aria-label and title
+   - `NoteMetaBar`: use `data.Site.Labels.Words`, `.Updated`, `.Created`, `.MinRead` (pass format to `FormatReadingTime`)
+   - `Content404`: use `data.Site.Labels.PageNotFound`, `.GoBackHome`
+   - `ContentFolder`: use `data.Site.Labels.Folder`
+   - `ContentTag`: use `data.Site.Labels.Tag`
+   - `LocalGraph(disabled bool)` → `LocalGraph(disabled bool, labels *i18n.Labels)`: use `labels.LocalGraph`, `labels.Expand`
+   - `TOCPanel`: use `data.Site.Labels.OnThisPage`
+   - `SimpleSearchButton()` → `SimpleSearchButton(labels *i18n.Labels)`: use `labels.Search`
+   - `SimpleTOCButton()` → `SimpleTOCButton(labels *i18n.Labels)`: use `labels.TableOfContents`
+   - `SimpleLocalGraphButton()` → `SimpleLocalGraphButton(labels *i18n.Labels)`: use `labels.LocalGraph`
+   - `SimpleTOCContainer`: use `data.Site.Labels.TableOfContents`
+   - `SimpleMenuButton()` → `SimpleMenuButton(labels *i18n.Labels)`: use `labels.Navbar`
+   - Footer text in `SimpleMenu` and `layout_default.templ`: use `data.Site.Labels.GeneratedWith`
+
+5. **`internal/templates/shared.templ`**: `ThemeToggler()` → `ThemeToggler(labels *i18n.Labels)`: use `labels.ToggleTheme` for aria-label. Update call sites in both layout files.
+
+6. **`internal/templates/layout_default.templ`**: Update call sites — pass `data.Site.Labels` to changed component calls. Also update the search button placeholder (line 74): change `Search notes...` to `{ data.Site.Labels.SearchPlaceholder }`. Update footer `Generated with` text.
+
+7. **`internal/templates/layout_simple.templ`**: Update call sites similarly.
+
+8. **Regenerate templ**: Run `templ generate`.
+
+**Verify**: `go build ./...` and `go test ./...`
 </task>
 
-<task order="3" title="Style the reading metadata bar in CSS" depends_on="2">
-Add CSS styles for the note metadata bar to the shared stylesheet.
-
-**File to edit:** `assets/shared.css`
-
-Add the following styles at the end of the file (before any closing comments), after the existing `/* LINK PREVIEW */` section:
-
-```css
-/* NOTE META BAR */
-.note-meta-bar {
-  padding-bottom: 1rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--sidebar-border);
-  font-size: 0.8rem;
-  color: var(--color-comment);
-  line-height: 1.5;
-}
-.note-meta-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: center;
-}
-.note-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.note-meta-item svg {
-  width: 14px;
-  height: 14px;
-  opacity: 0.7;
-}
-.note-meta-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-}
-.note-meta-tag {
-  background: var(--hover-color);
-  padding: 0.1rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-}
-```
-
-**Verify:** `go build ./...` must succeed. The CSS file is embedded via go:embed and doesn't need compilation. Run `go test ./...`.
-</task>
-
-<task order="4" title="Add back-to-top button to main tag" depends_on="3">
-Add a "Back to top" button with an animated SVG arrow inside the `<main>` tag for both layouts.
+<task order="5" title="Pass labels to JavaScript for client-side strings" depends_on="4">
+Some UI strings live in JavaScript files (`assets/default_app.js`, `assets/simple_app.js`, `assets/search.js`): "Copy", "No results found". Pass them via a data attribute or inline script so they're localizable.
 
 **Files to edit:**
 
-1. **`internal/templates/content.templ`** — Add a new templ component `BackToTop()` that renders:
-```html
-<button id="back-to-top" class="back-to-top" onclick="document.getElementById('content').scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top" title="Back to top">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m18 15-6-6-6 6"/>
-    </svg>
-</button>
-```
+1. **`internal/templates/layout_default.templ`** and **`internal/templates/layout_simple.templ`**: Add a hidden element inside `<body>` that carries JS-facing labels as data attributes:
+   ```html
+   <div id="kiln-labels" hidden
+     data-copy={ data.Site.Labels.Copy }
+     data-no-results={ data.Site.Labels.NoResults }
+   ></div>
+   ```
 
-2. **`internal/templates/layout_default.templ`** — Add `@BackToTop()` inside `<main>`, right after `@Content404(data)` (line 112), before the closing `</main>` tag. The button will be positioned absolutely within main.
+2. **`assets/default_app.js`**: Where `btn.textContent = "Copy"` appears (lines 352, 360), read from `document.getElementById("kiln-labels")?.dataset.copy || "Copy"` instead.
 
-3. **`internal/templates/layout_simple.templ`** — Add `@BackToTop()` inside `<main>`, right after `@Content404(data)` (line 66), before the closing `</main>` tag. Note: in the simple layout, the scroll container is the `<main>` itself (it has `overflow-y-scroll`), so the onclick should scroll `document.querySelector('main')` instead. To handle both, use a more generic JS approach: the JS initialization (next task) will handle the scroll target detection.
+3. **`assets/simple_app.js`**: Same change for "Copy" strings (lines 252, 260).
 
-4. **`assets/shared.css`** — Add styles for the back-to-top button at the end:
-```css
-/* BACK TO TOP */
-.back-to-top {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  z-index: 100;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--sidebar-border);
-  background: var(--bg-color);
-  color: var(--text-color);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.2s;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.back-to-top.visible {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-.back-to-top:hover {
-  background: var(--hover-color);
-  color: var(--accent-color);
-}
-.back-to-top svg {
-  transition: transform 0.2s ease;
-}
-.back-to-top:hover svg {
-  transform: translateY(-2px);
-}
-```
+4. **`assets/search.js`**: Where `msg.textContent = "No results found"` (line 176), read from `document.getElementById("kiln-labels")?.dataset.noResults || "No results found"`.
 
-**Verify:** `go build ./...` must succeed. Run `templ generate` first if needed. Run `go test ./...`.
-</task>
+5. **Regenerate templ**: Run `templ generate`.
 
-<task order="5" title="Add back-to-top JS scroll logic" depends_on="4">
-Add JavaScript to show/hide the back-to-top button based on scroll position. The button should appear after scrolling down 300px and disappear when near the top.
-
-**File to edit:** `assets/default_app.js`
-
-Add a new function `window.initBackToTop` at the end of the file (before any closing block). This function should:
-
-1. Find the button: `document.getElementById("back-to-top")`
-2. Find the scroll container: try `document.getElementById("content")` first (default layout), fall back to `document.querySelector("main")` (simple layout)
-3. Set up a scroll event listener on the scroll container that:
-   - Adds class `visible` to the button when `scrollTop > 300`
-   - Removes class `visible` when `scrollTop <= 300`
-4. Set up the button click handler to scroll the container to top with `behavior: "smooth"`
-
-Also, make sure `initBackToTop` is called in the DOMContentLoaded or htmx afterSwap handler. Look at how the file currently handles initialization — there's likely an `htmx:afterSwap` listener or a DOMContentLoaded block. Add `initBackToTop()` to both the initial page load and after htmx swaps.
-
-Search the existing `default_app.js` for the pattern used to reinitialize after htmx swaps (look for `htmx:afterSwap` or `htmx:afterSettle`) and add `window.initBackToTop()` to that same block.
-
-**Also edit:** `assets/simple_app.js` — Add the same `initBackToTop` function, but the scroll container should be `document.querySelector("main")` since the simple layout doesn't have a `#content` div with overflow. Follow the same pattern as the default app for initialization.
-
-**Remove** the inline `onclick` from the `BackToTop` templ component in `internal/templates/content.templ` since the JS now handles the click. Change the button to just:
-```html
-<button id="back-to-top" class="back-to-top" aria-label="Back to top" title="Back to top">
-```
-
-**Verify:** `go build ./...` must succeed. Run `go test ./...`.
-</task>
-
-<task order="6" title="Generate templ and verify full build" depends_on="5">
-Run the templ code generator and verify everything compiles and tests pass.
-
-1. Run `templ generate` in the project root to regenerate all `_templ.go` files from the `.templ` sources.
-2. Run `go build ./...` to verify compilation.
-3. Run `go test ./...` to verify all tests pass.
-4. If there are any compilation errors from the templ-generated code (e.g., missing imports for `strconv`, `sort`, or `time` in templ files), fix the imports in the `.templ` source files and re-run `templ generate`.
-5. Verify that `assets/shared.css` contains both the `.note-meta-bar` and `.back-to-top` style blocks.
-6. Verify that `internal/templates/content.templ` contains both `NoteMetaBar` and `BackToTop` components.
-
-**Verify:** `go build ./...` and `go test ./...` must both succeed with zero errors.
+**Verify**: `go build ./...` and `go test ./...`
 </task>
 </tasks>
