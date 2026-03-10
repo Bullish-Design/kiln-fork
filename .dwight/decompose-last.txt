@@ -1,205 +1,92 @@
 -- DwightAuto decomposition output
--- Request: We need to fix a problem with links. Right now kiln supports only wikilinks. We need to support event other kinds of links, like relative markdown links for example.
--- Timestamp: Mon 09 Mar 2026 06:40:45 PM CET
+-- Request: We need to fix a layout problem. In desktop, when we close both the sidebars and then press a link, the `<main>` tag transitions to the left. If I try to open the left sidebar again it is over the scr
+-- Timestamp: Tue 10 Mar 2026 08:17:18 AM CET
 
-Now I have a thorough understanding of the codebase. Let me analyze what needs to change:
+Now I have a clear understanding of the bug. Let me analyze:
 
-**Current state:**
-1. **Vault scanning** (`obsidian.go:211-229`): Only extracts wikilinks `[[...]]` using `wikilinkRegex`. Standard markdown links `[text](url)` are NOT extracted into `File.Links`.
-2. **Markdown rendering** (`wikilinks.go:286-309`): The `renderLink` method handles standard markdown links but just passes the destination through `slugify()` without resolving relative paths against the file index.
-3. **Backlink generation** (`obsidian.go:255-322`): Only processes wikilink-format strings (`[[...]]`).
-4. **Linter** (`linter.go`): Only checks wikilinks.
-5. **Graph links**: Only collected from wikilink resolution.
+**The Root Cause:**
 
-**What needs to change:**
-1. Extract standard markdown links during vault scan
-2. Resolve relative markdown links (`./sibling.md`, `../parent/note.md`) to correct web paths during rendering  
-3. Make backlinks work with both link formats
-4. Update the linter to also check standard markdown links
-5. Collect graph links from standard markdown links too
+The layout uses `<body class="flex">` with three children: `<nav>` (left sidebar), `<main class="flex-1">`, and `<aside>` (right sidebar). The sidebars are `xl:relative` on desktop.
+
+When sidebars are collapsed, CSS uses `transform: translateX(-100%)` / `translateX(100%)` to hide them. But `transform` does NOT remove them from document flow — they still occupy their `w-72` (288px) space in the flex layout. The sidebars just visually move off-screen.
+
+When HTMX swaps the `<main>` (via `outerHTML`), the flex layout recalculates. Since the collapsed sidebars still take up 288px each but are visually off-screen, the `<main>` element gets squeezed and positioned incorrectly. The flex container distributes space accounting for the invisible sidebars.
+
+The fix needs to actually remove collapsed sidebars from the flex flow on desktop — using `width: 0` and `overflow: hidden` (or `min-width: 0; flex: 0`) alongside the transform, so they don't occupy space.
 
 <tasks>
-<task order="1" title="Extract markdown links during vault scan">
-The vault scanner in `internal/obsidian/obsidian.go` currently only extracts wikilinks using `wikilinkRegex`. We need to also extract standard markdown links like `[text](./path.md)` or `[text](relative/path.md)` during the `processMarkdown()` method.
+<task order="1" title="Fix collapsed sidebar CSS to remove from flex flow">
+We need to fix a layout bug in the default layout. The bug: on desktop (xl breakpoint, >= 1280px), when both sidebars are collapsed and a user clicks an internal link (triggering an HTMX swap of `<main id="kiln-main">`), the `<main>` element shifts to the left. Re-opening the left sidebar shows it off-screen to the left. Opening the right sidebar resets everything.
 
-**What to do:**
+**Root cause:** The collapsed sidebars use `transform: translateX(±100%)` to visually hide, but `transform` does NOT remove elements from document flow. The sidebars still occupy their `w-72` (288px) width in the flex layout. When HTMX swaps the `<main>` element, the flex container recalculates and distributes space incorrectly because it accounts for the invisible sidebar widths.
 
-1. **Write tests first** in a new file `internal/obsidian/obsidian_links_test.go`:
-   - Add `// @feature:vault-scan` pragma on line 1
-   - Test that `processMarkdown()` extracts standard markdown links into `File.Links`
-   - Test cases:
-     - `[text](./sibling.md)` → extracted into Links
-     - `[text](../parent/note.md)` → extracted into Links
-     - `[text](folder/note.md)` → extracted into Links
-     - `[text](https://example.com)` → NOT extracted (external links should be skipped)
-     - `[text](#heading)` → NOT extracted (pure anchor links should be skipped)
-     - `![alt](image.png)` → extracted into Embeds (markdown images)
-     - Mixed wikilinks and markdown links both extracted correctly
-   - Since `processMarkdown()` reads from `f.Path` via `os.ReadFile`, create temp files for testing, or extract the body parsing into a testable helper
+**Fix:** Add `width: 0; overflow: hidden;` to the collapsed sidebar CSS rules so they are removed from the flex flow, not just visually translated off-screen.
 
-2. **Add a new regex** in `internal/obsidian/obsidian.go` alongside the existing `wikilinkRegex` (around line 24-31):
-   ```go
-   mdLinkRegex = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)]+)\)`)
+**Files to edit:**
+
+1. `assets/default_style_input.css` — This is the Tailwind CSS source file (lines 40-66 contain the sidebar collapse rules). Update the `@media (width >= 80rem)` block:
+   - Change `#left-sidebar.collapsed` to add `width: 0; min-width: 0; overflow: hidden;`
+   - Change `#right-sidebar.collapsed` to add `width: 0; min-width: 0; overflow: hidden;`
+   - Keep the existing `transform`, `opacity`, and `pointer-events: none` rules
+
+   Current CSS for `#left-sidebar.collapsed`:
+   ```css
+   #left-sidebar.collapsed {
+     transform: translateX(-100%);
+     opacity: 0;
+     pointer-events: none;
+   }
    ```
-   This captures: group 1 = optional `!` (embed/image), group 2 = link text, group 3 = URL/path
 
-3. **Update `processMarkdown()`** in `internal/obsidian/obsidian.go` (around line 209-229):
-   - After the existing wikilink extraction block, add a second block that uses `mdLinkRegex`
-   - For each match:
-     - Skip external links (starts with `http://`, `https://`, `mailto:`, etc.)
-     - Skip pure anchor links (starts with `#`)
-     - If the prefix is `!` (image), add to `f.Embeds` and `f.Links` (same pattern as wikilink embeds)
-     - Otherwise add to `f.Links`
-   - Store the markdown link in a normalized format that can be recognized later. Use the format `[text](path)` so it can be distinguished from wikilinks `[[target]]` during backlink generation.
-
-**Verify:** `go test ./internal/obsidian/ -run TestProcessMarkdown -v`
-</task>
-
-<task order="2" title="Resolve relative markdown links during rendering" depends_on="1">
-The `renderLink` method in `internal/obsidian/markdown/wikilinks.go` (lines 286-309) currently passes the destination URL through `slugify()` without resolving relative paths. We need it to resolve relative markdown links (like `./sibling.md`, `../parent/note.md`) against the current file's location and the file index.
-
-**Context about existing code:**
-- `IndexResolver` struct (line 585-594 of `wikilinks.go`) has fields: `Index`, `SourceMap`, `Links`, `CurrentSource`, `BasePath`, `Engine`, `ReadFile`, `ImageResults`
-- `CurrentSource` is set to the current file's `WebPath` before rendering (in `markdown.go:80`)
-- `FindFile()` method (line 60-139) resolves wikilinks by looking up names in the Index
-- `SourceMap` maps `WebPath → RelPath`
-
-**What to do:**
-
-1. **Write tests first** in `internal/obsidian/markdown/wikilinks_test.go` (append to existing file):
-   - This file already has `newTestResolver()` helper and tests for `FindFile`
-   - Add tests for a new method `ResolveMarkdownLink(dest string) string`:
-     - Test: relative link `./sibling.md` when `CurrentSource` is `/folder/current` → resolves to `/folder/sibling`
-     - Test: parent link `../other/note.md` when `CurrentSource` is `/folder/current` → resolves to `/other/note`
-     - Test: absolute path `/folder/note.md` → resolves to `/folder/note`
-     - Test: external URL `https://example.com` → returned as-is (no resolution)
-     - Test: anchor-only link `#heading` → returned as-is
-     - Test: link with anchor `./note.md#heading` → resolves path part, preserves anchor
-     - Test: link to non-.md file `./image.png` → resolves to correct web path
-
-2. **Add `ResolveMarkdownLink` method** to `IndexResolver` in `internal/obsidian/markdown/wikilinks.go`:
-   ```go
-   func (r *IndexResolver) ResolveMarkdownLink(dest string) string
+   Should become:
+   ```css
+   #left-sidebar.collapsed {
+     transform: translateX(-100%);
+     opacity: 0;
+     pointer-events: none;
+     width: 0;
+     min-width: 0;
+     overflow: hidden;
+   }
    ```
-   Logic:
-   - If `dest` starts with `http://`, `https://`, `mailto:` → return as-is (external)
-   - If `dest` starts with `#` → return as-is (anchor-only)
-   - Separate anchor part if present (`path#anchor` → path + `#anchor`)
-   - If `dest` is a relative path (starts with `./`, `../`, or has no scheme):
-     - Resolve it relative to the current source's directory: use `path.Dir(r.CurrentSource)` + `path.Clean(dest)`
-     - Strip `.md` extension from the resolved path for clean URLs
-     - Slugify the result
-   - Re-append anchor if present
-   - Record a graph link via `r.recordGraphLink()` if the resolved path is internal
-   - Return the resolved path
 
-3. **Update `renderLink`** in `wikilinks.go` (lines 286-309):
-   - Change `newDest := string(n.Destination)` to use the new resolver:
-     ```go
-     newDest := r.ResolveMarkdownLink(string(n.Destination))
-     ```
-   - Remove the existing `slugify(newDest)` call since `ResolveMarkdownLink` handles slugification
+   Same for `#right-sidebar.collapsed` (change `translateX(100%)` stays the same, just add the width/overflow rules).
 
-4. **Update `renderImage`** in `wikilinks.go` (lines 312-328):
-   - Similarly resolve `newDest` through `ResolveMarkdownLink` for relative image paths
+2. `assets/default_style.css` — This is the compiled/built CSS output. Apply the exact same changes to the `@media (width >= 80rem)` block (lines 844-866). The rules for `#left-sidebar.collapsed` and `#right-sidebar.collapsed` need the same `width: 0; min-width: 0; overflow: hidden;` additions.
 
-**Verify:** `go test ./internal/obsidian/markdown/ -v`
-</task>
-
-<task order="3" title="Update backlink generation for markdown links" depends_on="1">
-The `GenerateBacklinks` function in `internal/obsidian/obsidian.go` (lines 255-322) currently only processes wikilink-format strings (`[[target]]`). After task 1, `File.Links` will also contain standard markdown links in the format `[text](path)`. We need to handle both formats.
-
-**Context about existing `GenerateBacklinks` code (lines 255-322):**
-- Creates a lookup map: `fileMap[lowercase_name] = *File`
-- For non-.md files, key includes extension: `fileMap[name+ext]`
-- Iterates through `sourceFile.Links` and `sourceFile.Embeds`
-- Cleans wikilinks: strips `!`, `[[`, `]]`, alias `|`, anchor `#`, path prefix
-- Looks up by lowercase cleaned name in `fileMap`
-
-**What to do:**
-
-1. **Write tests first** in `internal/obsidian/obsidian_links_test.go` (the file created in task 1, add `// @feature:vault-scan` pragma if not present):
-   - Test `GenerateBacklinks` with a mix of wikilinks and markdown links:
-     - File A has `Links: ["[[B]]", "[link](./C.md)"]`
-     - File B and File C should each get a backlink to A
-   - Test that markdown link `[text](../folder/note.md)` generates a backlink
-   - Test that external markdown links (`[text](https://example.com)`) do NOT generate backlinks
-   - Test that duplicate backlinks are not created
-
-2. **Update `GenerateBacklinks`** in `internal/obsidian/obsidian.go`:
-   - Add a helper function to detect link format:
-     ```go
-     func isMarkdownLink(raw string) bool {
-         return strings.HasPrefix(raw, "[") && strings.Contains(raw, "](") && strings.HasSuffix(raw, ")")
+**Also add transition for width** in the transition rules so the sidebar collapse/expand animates smoothly:
+   - In `default_style_input.css`, update both transition rules to include `width`:
+     ```css
+     #left-sidebar, #right-sidebar {
+       transition: none;
+       will-change: transform, opacity, width;
+     }
+     .animate-ready #left-sidebar,
+     .animate-ready #right-sidebar {
+       transition: transform 200ms ease-out, opacity 200ms ease-out, width 200ms ease-out;
      }
      ```
-   - In the loop that processes `rawLink` (around lines 275-318), add a branch:
-     - If `isMarkdownLink(rawLink)`: extract the path from `[text](path)`, skip external URLs, clean the path (remove `.md` extension, extract base name), then look up in `fileMap`
-     - Else: use existing wikilink cleaning logic
-   - The backlink format should remain `[[SourceName]]` (wikilink format) regardless of how the link was written — backlinks are always displayed as wikilinks
+   - Apply the same in `default_style.css`.
 
-**Verify:** `go test ./internal/obsidian/ -v`
+**Verify:** After making these changes, manually test by building the project (`go test ./...` to ensure nothing breaks). The CSS-only changes don't have unit tests, but the Go tests should still pass.
+
+**Verify command:** `go test ./...`
 </task>
+<task order="2" title="Fix simple layout CSS for same sidebar collapse bug" depends_on="1">
+The same sidebar collapse bug may exist in the simple layout. Check `assets/simple_style_input.css` and `assets/simple_style.css` for similar collapsed sidebar rules that use `transform: translateX()` without removing the element from flex flow.
 
-<task order="4" title="Update linter to check markdown links" depends_on="1">
-The linter in `internal/linter/linter.go` currently only checks wikilinks for broken references. We need it to also validate standard markdown links.
+**Context:** The default layout fix in task 1 added `width: 0; min-width: 0; overflow: hidden;` to the `#left-sidebar.collapsed` and `#right-sidebar.collapsed` rules inside `@media (width >= 80rem)`. The simple layout may have the same issue.
 
-**Context about existing linter code:**
-- `CollectNotes(inputDir)` returns `map[string]bool` with valid file paths/names
-- `BrokenLinks()` uses regex `\[\[(.*?)\]\]` to find wikilinks, strips aliases and anchors, checks candidates
+**Files to check and potentially edit:**
 
-**What to do:**
+1. `assets/simple_style_input.css` — Check if there is a `@media (width >= 80rem)` block with `#left-sidebar.collapsed` and `#right-sidebar.collapsed` rules. If so, apply the same fix: add `width: 0; min-width: 0; overflow: hidden;` and update the `will-change` and `transition` properties to include `width`.
 
-1. **Write tests first** in a new file `internal/linter/linter_test.go`:
-   - Add `// @feature:linter` pragma on line 1
-   - Create a temp directory with markdown files containing both wikilinks and markdown links
-   - Test that broken wikilinks are detected (existing behavior)
-   - Test that broken markdown links like `[text](./nonexistent.md)` are detected
-   - Test that valid markdown links like `[text](./existing.md)` are NOT flagged
-   - Test that external links (`https://...`) are skipped and NOT checked
-   - Test that anchor-only links (`#heading`) are skipped
+2. `assets/simple_style.css` — Apply matching changes to the compiled output if sidebar collapse rules exist.
 
-2. **Update `BrokenLinks()`** in `internal/linter/linter.go`:
-   - Add a second regex for markdown links:
-     ```go
-     mdLinkRegex := regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
-     ```
-   - After the existing wikilink checking loop, add a second loop for markdown link matches:
-     - Extract the path (group 2)
-     - Skip external links (starts with `http://`, `https://`, `mailto:`)
-     - Skip anchor-only links (starts with `#`)
-     - Strip anchor part if present
-     - Resolve relative paths: use `filepath.Dir(relPath)` of the current file + the link path, then `filepath.Clean()` it
-     - Check the resolved path against the `notes` map (same candidate logic as wikilinks)
-     - Log warning for broken links
+3. `assets/simple_app.js` — Read this file to check if the simple layout has the same sidebar toggle JS logic. If it shares the same sidebar IDs and collapsed class, the CSS fix is sufficient.
 
-**Verify:** `go test ./internal/linter/ -v`
-</task>
+If the simple layout does NOT have collapsible desktop sidebars (some layouts may only have mobile sidebars), then no changes are needed. Just verify.
 
-<task order="5" title="Add integration rendering tests for markdown links" depends_on="2">
-Add integration-level tests that verify the full rendering pipeline correctly handles standard markdown links alongside wikilinks. This tests the `ObsidianMarkdown.RenderNote()` and `ObsidianMarkdown.Render()` methods end-to-end.
-
-**Context about existing rendering:**
-- `markdown.New(fileIndex, loader)` creates an `ObsidianMarkdown` instance (in `internal/obsidian/markdown/markdown.go`)
-- `RenderNote(content []byte)` renders raw markdown bytes to HTML string
-- The `IndexResolver` is registered as a custom renderer for `ast.KindLink`, `ast.KindImage`, and `wikilink.Kind`
-
-**What to do:**
-
-1. **Create test file** `internal/obsidian/markdown/markdown_links_test.go`:
-   - Add `// @feature:markdown` pragma on line 1
-   - Create helper to build an `ObsidianMarkdown` with a test file index
-   - Test cases for `RenderNote`:
-     - Wikilink `[[Note]]` renders as `<a href="/note" class="internal-link">Note</a>` (existing behavior, verify not broken)
-     - Markdown link `[text](./note.md)` renders as `<a href="/current-dir/note">text</a>` (resolved relative path)
-     - Markdown link `[text](https://example.com)` renders as `<a href="https://example.com">text</a>` (external, untouched)
-     - Markdown image `![alt](./image.png)` renders with resolved path
-     - Mixed content with both wikilinks and markdown links renders correctly
-   - For each test, set `resolver.CurrentSource` appropriately before rendering
-
-2. **Verify that graph links are collected** from both wikilinks and markdown links:
-   - After rendering content with both link types, check `resolver.Links` contains edges from both
-
-**Verify:** `go test ./internal/obsidian/markdown/ -v`
+**Verify command:** `go test ./...`
 </task>
 </tasks>
