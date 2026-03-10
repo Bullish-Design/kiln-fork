@@ -1,110 +1,109 @@
 -- DwightAuto decomposition output
--- Request: The `local-graph-container` is relative to the right sidebar in position, and now is under the overlay. It needs to be one of the last element of body, so it's over everything.
--- Timestamp: Tue 10 Mar 2026 10:15:15 AM CET
+-- Request: The Local Graph needs to be in the right sidebar, as the first thing after the header. Also we still have problems with the expanded local graph. It displays correctly in the right position, but it's 
+-- Timestamp: Tue 10 Mar 2026 10:57:12 AM CET
 
-Now I have a clear picture. Let me understand the problem:
 
-**Default layout**: `local-graph-container` is inside `#right-sidebar` → `#right-sidebar-content` → `#local-graph-wrapper`. When expanded (`.expanded` class on body), it uses `position: fixed` with `z-index: 10000`, but because it's inside the sidebar (which has `z-index: 50`), the stacking context makes it appear under overlays.
-
-**Simple layout**: `SimpleLocalGraphContainer` is already a direct child of `<body>` (line 73 of layout_simple.templ), so it doesn't have this problem.
-
-The fix: Move the `local-graph-wrapper` out of the right sidebar and make it a direct child of `<body>` in the default layout, similar to how the simple layout does it. The JS and CSS need to account for this structural change.
 
 <tasks>
-<task order="1" title="Move local-graph-container to body in default layout">
-Move the `local-graph-container` (inside `local-graph-wrapper`) out of the right sidebar and make it one of the last children of `<body>` in the default layout template, so it renders above all other elements when expanded.
+<task order="1" title="Move local graph into right sidebar template">
+Move the local graph component from body-level into the right sidebar, placing it as the first element after the sidebar header.
 
-**Problem**: In `internal/templates/layout_default.templ`, the `LocalGraph` component is rendered inside `#right-sidebar-content` (line 137). When the graph is expanded to fullscreen via the `.expanded` class on body, it uses `position: fixed` with `z-index: 10000`, but the sidebar's stacking context (`z-index: 50`) traps it underneath overlays (like the search overlay).
+**Files to edit:**
 
-**What to change**:
+1. **`internal/templates/layout_default.templ`**
 
-1. **Edit `internal/templates/layout_default.templ`**:
-   - Remove `@LocalGraph(data.Site.DisableLocalGraph)` from inside the `#right-sidebar-content` div (line 137).
-   - Add it as one of the last children of `<body>`, after the right sidebar `</aside>` closing tag (after line 141), just before `</body>`. This mirrors how the simple layout places `@SimpleLocalGraphContainer()` as a direct body child (see `layout_simple.templ` line 73).
-   - The line should be:
-     ```
-     if !data.Site.DisableLocalGraph {
-       @LocalGraph(data.Site.DisableLocalGraph)
-     }
-     ```
-
-2. **Edit `assets/default_style_input.css`** to update the non-expanded (normal) state styling of `#local-graph-wrapper` so it appears visually in the same position as before (right sidebar area). Add these styles:
-   ```css
-   #local-graph-wrapper {
-     position: fixed;
-     top: 0;
-     right: 0;
-     width: 18rem; /* matches sidebar width w-72 = 288px */
-     z-index: 45;
-     padding: 1rem;
-     pointer-events: auto;
-   }
+   Current structure (lines 114-143):
    ```
-   Also add a media query so on screens >= 1280px (xl breakpoint), it's positioned relative to the sidebar. On smaller screens it should be hidden by default (since the sidebar is hidden).
-
-   Actually, a simpler approach: since the `local-graph-wrapper` was part of the sidebar content flow, and now it's a body child, we need to position it so it overlays the sidebar area in normal (non-expanded) mode. But reviewing the expanded CSS (lines 74-106 of `default_style_input.css`), the expanded mode already uses `position: fixed` and should work correctly once the element is a direct body child (no more sidebar stacking context).
-
-   For the **non-expanded state**: The graph needs to appear as if it's still in the sidebar. Add to `default_style_input.css` (after the existing `@media` block ending at line 72):
-   ```css
-   #local-graph-wrapper {
-     position: fixed;
-     bottom: 0;
-     right: 0;
-     width: 18rem;
-     padding: 1rem;
-     z-index: 51;
-     background-color: var(--sidebar-bg);
-   }
-
-   @media (max-width: 1279px) {
-     #local-graph-wrapper {
-       display: none;
-     }
+   <aside id="right-sidebar">
+     <header>...</header>
+     <div id="right-sidebar-content">@TOCPanel</div>
+   </aside>
+   if !data.Site.DisableLocalGraph {
+     @LocalGraph(data.Site.DisableLocalGraph)
    }
    ```
 
-   Note: The right sidebar has `z-index: 50`, so the graph wrapper at `z-index: 51` will appear above it. The wrapper gets `position: fixed` so it sticks to the right edge at the bottom, mimicking where it was in the sidebar flow.
+   Change to:
+   - Remove lines 141-143 (the standalone `@LocalGraph` after `</aside>`)
+   - Insert `if !data.Site.DisableLocalGraph { @LocalGraph(data.Site.DisableLocalGraph) }` inside the `<aside>` block, between `</header>` (line 135) and the `<div id="right-sidebar-content">` (line 136)
 
-3. **Rebuild the compiled CSS**: Run `npx @tailwindcss/cli -i assets/default_style_input.css -o assets/default_style.css` (or whatever build command the project uses for CSS compilation). Check if there's a build script.
+2. **`internal/templates/content.templ`** — Update the `LocalGraph` templ component (lines 297-334). Change the wrapper div classes from no classes to `class="p-4 border-b border-b-sidebar-border"` so it has padding and a bottom border matching the sidebar style. The `id="local-graph-wrapper"` stays the same.
 
-4. **Regenerate templ files**: Run `templ generate` to regenerate the Go code from the `.templ` files.
-
-**Verify**: Build the project with `go build ./...` to ensure no compilation errors. The local graph container should now be a direct child of body, ensuring it's above everything (including search overlay) when expanded.
+**Verify:** Run `templ generate && go build ./...`
 </task>
-<task order="2" title="Handle sidebar toggle visibility for detached graph" depends_on="1">
-Now that `local-graph-wrapper` is no longer inside the right sidebar DOM, we need to ensure the JavaScript that manages sidebar toggling and graph expand still works correctly.
 
-**Context from task 1**: The `local-graph-wrapper` was moved from inside `#right-sidebar-content` to be a direct child of `<body>` in `layout_default.templ`. The CSS positions it as fixed at the bottom-right to overlay the sidebar area.
+<task order="2" title="Update CSS for in-sidebar graph and fix expanded overlay" depends_on="1">
+Update CSS so the local graph flows inside the sidebar normally, and fix the expanded graph being behind the overlay.
 
-**What to check and update**:
+**Files to edit:**
 
-1. **Edit `assets/default_app.js`**: 
-   - The `toggleGraphExpand` function (line 250-253) toggles `document.body.classList.toggle("expanded")` — this should still work since the CSS selectors `.expanded #local-graph-container` and `.expanded #local-graph-wrapper header button` target descendants of body, which `local-graph-wrapper` still is.
-   - Check the right sidebar toggle logic. When the right sidebar is hidden (collapsed or on mobile), the local graph wrapper should also be hidden. Find the sidebar toggle function and add logic to also hide/show `local-graph-wrapper` when the sidebar is toggled. Look for `toggleRightSidebar` or similar function.
-   - The collapsed sidebar logic: when `#right-sidebar` has class `collapsed`, the local-graph-wrapper should also be hidden. Add a CSS rule or JS logic for this.
+1. **`assets/default_style_input.css`** — Replace lines 74-126 with:
 
-2. **Edit `assets/default_style_input.css`**: Add a rule to hide the graph wrapper when the sidebar is collapsed:
+   Remove these three blocks entirely:
+   - `#local-graph-wrapper { position: fixed; bottom: 0; right: 0; ... }` (lines 74-82)
+   - `@media (max-width: 1279px) { #local-graph-wrapper { display: none; } }` (lines 84-88)
+   - `#right-sidebar.collapsed ~ #local-graph-wrapper { display: none; }` (lines 90-92)
+
+   Keep the expanded rules (lines 94-126) but add a new rule for the wrapper in expanded state:
    ```css
-   #right-sidebar.collapsed ~ #local-graph-wrapper {
-     display: none;
+   .expanded #local-graph-wrapper {
+     position: fixed;
+     inset: 0;
+     z-index: 10000;
+     padding: 0;
+     border-bottom: none;
+     background: transparent;
    }
    ```
-   Wait — since both are now direct children of body, the sibling selector `~` should work. But we need to verify the DOM order: `<aside id="right-sidebar">` comes before the new `local-graph-wrapper` div.
 
-   Actually, review the DOM: the right sidebar `aside` is before the new `local-graph-wrapper` in body, so `~` (general sibling combinator) will work.
+   Also add `aspect-ratio: auto;` to the existing `.expanded #local-graph-container` rule so it overrides the `aspect-square` class.
 
-3. **Edit `assets/default_app.js`**: Look for the right sidebar toggle function. When it toggles the sidebar visibility, also toggle the `local-graph-wrapper` visibility. Search for where `right-sidebar` classes are manipulated.
+2. **`assets/default_style.css`** — Apply the exact same changes (this is the compiled output). Remove lines 912-928, keep lines 929-959, add the new `.expanded #local-graph-wrapper` rule.
 
-4. **Also handle `localStorage`**: There's an inline script in `layout_default.templ` (lines 120-124) that checks `localStorage.getItem("right-sidebar")` and adds `collapsed` class. The CSS sibling rule from step 2 handles this case.
+**Verify:** Run `go build ./...`
+</task>
 
-5. **Edit `assets/graph.js`**: The `setupGraph` function (line 12) looks for `local-graph-container` and `local-graph-wrapper` by ID. Since we only moved them in the DOM (not changed IDs), the JS should still find them. Verify no parent-relative queries are used.
+<task order="3" title="Update JS for expanded graph re-render and Escape key" depends_on="2">
+Update JavaScript so the expanded graph re-renders at full size and can be closed with Escape.
 
-6. **Rebuild CSS**: Run the CSS build command (check `build.sh` or package.json for the command). Run `templ generate` if any templ files changed.
+**Files to edit:**
 
-**Verify**: Run `go build ./...` to ensure compilation. Test that:
-- The local graph appears in the sidebar area when the sidebar is visible
-- The local graph hides when the sidebar is collapsed  
-- The expanded mode shows the graph fullscreen above everything including overlays
-- The expand button is accessible and functional
+1. **`assets/default_app.js`** — Replace `toggleGraphExpand` (lines 251-253) with:
+   ```javascript
+   window.toggleGraphExpand = function () {
+     var isExpanded = document.body.classList.toggle("expanded");
+     if (isExpanded) {
+       var handler = function(e) {
+         if (e.key === "Escape") {
+           document.body.classList.remove("expanded");
+           document.removeEventListener("keydown", handler);
+         }
+       };
+       document.addEventListener("keydown", handler);
+     }
+   };
+   ```
+
+2. **`assets/graph.js`** — After the existing `themeObserver.observe(...)` block (around line 72), add a MutationObserver on `document.body` to re-render the local graph when the `expanded` class is toggled:
+   ```javascript
+   const bodyClassObserver = new MutationObserver((mutations) => {
+     for (const m of mutations) {
+       if (m.type === "attributes" && m.attributeName === "class") {
+         const local = document.getElementById("local-graph-container");
+         const localWrapper = document.getElementById("local-graph-wrapper");
+         if (local) {
+           setTimeout(() => initGraph(null, local, localWrapper), 50);
+         }
+         break;
+       }
+     }
+   });
+   bodyClassObserver.observe(document.body, {
+     attributes: true,
+     attributeFilter: ["class"],
+   });
+   ```
+
+**Verify:** Run `go build ./...`
 </task>
 </tasks>
