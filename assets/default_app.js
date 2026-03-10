@@ -247,17 +247,69 @@ window.initCanvasMode = function (canvasData) {
   tryInitCanvas();
 };
 
-// Expands the graph
-window.toggleGraphExpand = function () {
-  var isExpanded = document.body.classList.toggle("expanded");
-  if (isExpanded) {
-    var handler = function(e) {
-      if (e.key === "Escape") {
-        document.body.classList.remove("expanded");
-        document.removeEventListener("keydown", handler);
+// Graph expand overlay — mirrors the search overlay pattern from search.js
+function createGraphOverlay() {
+  var overlay = document.createElement("div");
+  overlay.id = "graph-overlay";
+  overlay.className = "hidden";
+  var modal = document.createElement("div");
+  modal.id = "graph-modal";
+  var closeBtn = document.createElement("button");
+  closeBtn.id = "graph-modal-close";
+  closeBtn.type = "button";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.innerHTML = "&times;";
+  var container = document.createElement("div");
+  container.id = "graph-modal-container";
+  modal.appendChild(closeBtn);
+  modal.appendChild(container);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", function (e) {
+    if (e.target === overlay) hideGraphOverlay();
+  });
+  closeBtn.addEventListener("click", function () {
+    hideGraphOverlay();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      var ov = document.getElementById("graph-overlay");
+      if (ov && !ov.classList.contains("hidden")) {
+        hideGraphOverlay();
       }
-    };
-    document.addEventListener("keydown", handler);
+    }
+  });
+  return overlay;
+}
+
+function getGraphOverlay() {
+  return document.getElementById("graph-overlay") || createGraphOverlay();
+}
+
+function showGraphOverlay() {
+  var overlay = getGraphOverlay();
+  overlay.classList.remove("hidden", "closing");
+}
+
+function hideGraphOverlay() {
+  var overlay = document.getElementById("graph-overlay");
+  if (!overlay || overlay.classList.contains("hidden")) return;
+  overlay.classList.add("closing");
+  overlay.addEventListener("animationend", function handler() {
+    overlay.removeEventListener("animationend", handler);
+    overlay.classList.add("hidden");
+    overlay.classList.remove("closing");
+  }, { once: true });
+}
+
+window.toggleGraphExpand = function () {
+  var overlay = getGraphOverlay();
+  if (overlay.classList.contains("hidden")) {
+    showGraphOverlay();
+    // Dispatch custom event so graph.js can render into the modal container
+    window.dispatchEvent(new CustomEvent("graph-overlay-opened"));
+  } else {
+    hideGraphOverlay();
   }
 };
 
