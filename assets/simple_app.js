@@ -361,6 +361,26 @@ window.initNavFolderAnimation = function () {
   });
 };
 
+window.initBackToTop = function () {
+  var btn = document.getElementById("back-to-top");
+  if (!btn) return;
+
+  var container = document.querySelector("main");
+  if (!container) return;
+
+  container.addEventListener("scroll", function () {
+    if (container.scrollTop > 300) {
+      btn.classList.add("visible");
+    } else {
+      btn.classList.remove("visible");
+    }
+  });
+
+  btn.addEventListener("click", function () {
+    container.scrollTo({ top: 0, behavior: "smooth" });
+  });
+};
+
 // Calls every init function
 window.initAll = function () {
   window.initThemeToggle();
@@ -371,6 +391,7 @@ window.initAll = function () {
   }
   window.addCopyButtons();
   window.initLightbox();
+  window.initBackToTop();
   if (window.initLinkPreview) window.initLinkPreview();
   document.addEventListener("keydown", function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") {
