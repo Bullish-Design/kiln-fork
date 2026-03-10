@@ -12,6 +12,7 @@ output: ./public
 mode: default
 layout: default
 lang: en
+accent-color: green
 # flat-urls: false
 # disable-toc: false
 # disable-local-graph: false
