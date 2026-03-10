@@ -173,7 +173,7 @@
     if (results.length === 0) {
       var msg = document.createElement("div");
       msg.className = "search-empty";
-      msg.textContent = "No results found";
+      msg.textContent = document.getElementById("kiln-labels")?.dataset.noResults || "No results found";
       container.appendChild(msg);
       return;
     }

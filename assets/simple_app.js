@@ -245,11 +245,12 @@ window.initThemeToggle = function () {
 };
 
 window.addCopyButtons = function () {
+  var copyLabel = document.getElementById("kiln-labels")?.dataset.copy || "Copy";
   document.querySelectorAll(".chroma").forEach((block) => {
     if (block.querySelector(".copy-code-btn")) return;
     const btn = document.createElement("button");
     btn.className = "copy-code-btn";
-    btn.textContent = "Copy";
+    btn.textContent = copyLabel;
     btn.addEventListener("click", () => {
       const code = block.querySelector("code").innerText;
       navigator.clipboard
@@ -257,7 +258,7 @@ window.addCopyButtons = function () {
         .then(() => {
           btn.textContent = "Copied!";
           setTimeout(() => {
-            btn.textContent = "Copy";
+            btn.textContent = copyLabel;
           }, 2000);
         })
         .catch((err) => {});

@@ -41,6 +41,12 @@ templ DefaultLayout(data *PageData) {
 			hx-swap="outerHTML"
 			class="bg-background flex overflow-hidden relative"
 		>
+			<div
+				id="kiln-labels"
+				hidden
+				data-copy={ data.Site.Labels.Copy }
+				data-no-results={ data.Site.Labels.NoResults }
+			></div>
 			<!-- Left sidebar -->
 			<nav
 				id="left-sidebar"
