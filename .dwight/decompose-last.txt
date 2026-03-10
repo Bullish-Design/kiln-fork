@@ -1,232 +1,236 @@
 -- DwightAuto decomposition output
--- Request: Rework the local-graph expanding logic, window.toggleGraphExpand(), to be the same that we use for the search-button. Basically whenever is clicked, instead of moving and scaling the local graph in th
--- Timestamp: Tue 10 Mar 2026 11:10:50 AM CET
+-- Request: I would like to add a "Back to top" button on the main tag. Make it small, with a svg of an arrow. Make it animated. Also add reading metadata on top of the notes, something like "Last updated", "Crea
+-- Timestamp: Tue 10 Mar 2026 11:34:09 AM CET
 
-Now I have a complete picture. Let me understand the current state:
-
-**Current approach** (`default_app.js`): `window.toggleGraphExpand()` toggles `document.body.classList.toggle("expanded")`, which then uses CSS (`.expanded #local-graph-wrapper`, `.expanded #local-graph-container`, `.expanded::before`) to reposition the sidebar graph container via `position: fixed` to fill the screen with a backdrop.
-
-**Search overlay approach** (`search.js`): Creates a _separate_ overlay container (`#search-overlay` with `#search-modal` inside), appended to `document.body`, with `hidden`/`closing` class toggling and fade animations. Click-outside and Escape key close it.
-
-**What the developer wants**: Instead of mutating the sidebar graph via `body.expanded`, create a _new_ overlay container (like search does) that holds a separate full-screen graph rendering.
+Now I have a complete picture. Let me produce the decomposition.
 
 <tasks>
-<task order="1" title="Add graph overlay CSS to shared.css">
-In `assets/shared.css`, add CSS styles for the new graph expand overlay, following the exact same pattern used by the search overlay (`#search-overlay`/`#search-modal`). 
+<task order="1" title="Add WordCount and ReadingTime to PageData">
+Extend the template data types and the adapter to pass reading metadata (word count, reading time, created/modified dates) from the builder to templates.
 
-Add the following CSS rules at the end of `assets/shared.css` (before the closing of the file, after the search styles section around line 1009):
+**Files to edit:**
+
+1. **`internal/templates/types.go`** — Add a `NoteMeta` struct and a `Meta *NoteMeta` field to `PageData`:
+```go
+type NoteMeta struct {
+    WordCount   int
+    ReadingTime int       // minutes
+    Created     time.Time
+    Modified    time.Time
+    Tags        []string
+}
+```
+Add `Meta *NoteMeta` field to the `PageData` struct (after the `Frontmatter` field).
+
+2. **`internal/templates/helpers.go`** — Add a helper function `ReadingTimeFromWords(wordCount int) int` that returns `max(1, wordCount/200)` (200 WPM average). Also add `FormatReadingTime(minutes int) string` that returns e.g. "3 min read". Add `WordCount(content []byte) int` that uses `strings.Fields`.
+
+3. **`internal/builder/templ_adapter.go`** — In `toTemplPageData()`, populate the new `Meta` field when `p.IsNote && p.File != nil`. Calculate word count from `p.File.Content` using the new helper, compute reading time, and populate created/modified from `p.File.Created` / `p.File.Modified`. Extract tags from `p.File.Tags` map keys.
+
+4. **`internal/builder/builder_default.go`** — No changes needed here since `p.File` is already passed with content and timestamps.
+
+**Verify:** `go build ./...` must succeed. Run `go test ./...` to ensure no regressions.
+
+**Feature pragma:** All edited files already have `@feature:layouts` or `@feature:builder` pragmas — preserve them.
+</task>
+
+<task order="2" title="Add reading metadata bar templ component" depends_on="1">
+Create a templ component that renders a reading metadata bar at the top of note content, showing: Last updated, Created, Reading time, Word count, and Tags.
+
+**Files to edit:**
+
+1. **`internal/templates/content.templ`** — Add a new templ component `NoteMetaBar(data *PageData)` that renders a metadata bar. It should only render when `data.IsNote && data.Meta != nil`. The component should output:
+```html
+<div class="note-meta-bar">
+    <div class="note-meta-items">
+        <span class="note-meta-item">
+            <svg ...clock icon.../> <!-- small 14x14 SVG -->
+            { FormatReadingTime(data.Meta.ReadingTime) }
+        </span>
+        <span class="note-meta-item">
+            { strconv.Itoa(data.Meta.WordCount) } words
+        </span>
+        <span class="note-meta-item">
+            Updated { FormatDate(data.Meta.Modified) }
+        </span>
+        <span class="note-meta-item">
+            Created { FormatDate(data.Meta.Created) }
+        </span>
+    </div>
+    <div class="note-meta-tags"> (only if len(data.Meta.Tags) > 0)
+        for each tag: <span class="note-meta-tag">#tagname</span>
+    </div>
+</div>
+```
+
+2. **`internal/templates/content.templ`** — Modify the existing `ContentNote` templ component to include `@NoteMetaBar(data)` right BEFORE the `@templ.Raw(data.Content)` line, inside the `<div class="p-4 content">` wrapper. The updated ContentNote should look like:
+```
+templ ContentNote(data *PageData) {
+    if data.IsNote {
+        <div id="content" class="h-dvh overflow-y-auto overflow-x-hidden">
+            <div class="p-4 content">
+                @NoteMetaBar(data)
+                @templ.Raw(data.Content)
+            </div>
+        </div>
+    }
+}
+```
+
+Use small inline SVG icons (14x14) for visual elements. Use Lucide-style icons: a clock for reading time, a calendar for dates. Keep styling class-based (classes will be defined in the CSS task).
+
+**Verify:** `go build ./...` must succeed (templ generate must be run first if the project uses templ code generation — check if `_templ.go` files exist and regenerate with `templ generate`). Run `go test ./...`.
+</task>
+
+<task order="3" title="Style the reading metadata bar in CSS" depends_on="2">
+Add CSS styles for the note metadata bar to the shared stylesheet.
+
+**File to edit:** `assets/shared.css`
+
+Add the following styles at the end of the file (before any closing comments), after the existing `/* LINK PREVIEW */` section:
 
 ```css
-/* GRAPH expand overlay */
-#graph-overlay {
+/* NOTE META BAR */
+.note-meta-bar {
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+  font-size: 0.8rem;
+  color: var(--color-comment);
+  line-height: 1.5;
+}
+.note-meta-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+.note-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.note-meta-item svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+.note-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.note-meta-tag {
+  background: var(--hover-color);
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+```
+
+**Verify:** `go build ./...` must succeed. The CSS file is embedded via go:embed and doesn't need compilation. Run `go test ./...`.
+</task>
+
+<task order="4" title="Add back-to-top button to main tag" depends_on="3">
+Add a "Back to top" button with an animated SVG arrow inside the `<main>` tag for both layouts.
+
+**Files to edit:**
+
+1. **`internal/templates/content.templ`** — Add a new templ component `BackToTop()` that renders:
+```html
+<button id="back-to-top" class="back-to-top" onclick="document.getElementById('content').scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top" title="Back to top">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m18 15-6-6-6 6"/>
+    </svg>
+</button>
+```
+
+2. **`internal/templates/layout_default.templ`** — Add `@BackToTop()` inside `<main>`, right after `@Content404(data)` (line 112), before the closing `</main>` tag. The button will be positioned absolutely within main.
+
+3. **`internal/templates/layout_simple.templ`** — Add `@BackToTop()` inside `<main>`, right after `@Content404(data)` (line 66), before the closing `</main>` tag. Note: in the simple layout, the scroll container is the `<main>` itself (it has `overflow-y-scroll`), so the onclick should scroll `document.querySelector('main')` instead. To handle both, use a more generic JS approach: the JS initialization (next task) will handle the scroll target detection.
+
+4. **`assets/shared.css`** — Add styles for the back-to-top button at the end:
+```css
+/* BACK TO TOP */
+.back-to-top {
   position: fixed;
-  inset: 0;
-  z-index: 9999;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--sidebar-border);
+  background: var(--bg-color);
+  color: var(--text-color);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(2px);
-  animation: kiln-fade-in 150ms ease-out;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
-#graph-overlay.closing {
-  animation: kiln-fade-out 120ms ease-in forwards;
+.back-to-top.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
-#graph-overlay.hidden {
-  display: none;
-}
-#graph-modal {
-  background: var(--bg-color);
-  width: 90vw;
-  height: 90vh;
-  border-radius: 0.5rem;
-  border: 2px solid var(--accent-color);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  position: relative;
-  animation: kiln-scale-in 150ms ease-out;
-}
-#graph-modal-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1;
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: var(--text-color);
-  padding: 4px;
-  border-radius: 4px;
-}
-#graph-modal-close:hover {
+.back-to-top:hover {
   background: var(--hover-color);
+  color: var(--accent-color);
 }
-#graph-modal-container {
-  width: 100%;
-  height: 100%;
+.back-to-top svg {
+  transition: transform 0.2s ease;
+}
+.back-to-top:hover svg {
+  transform: translateY(-2px);
 }
 ```
 
-These IDs follow the exact same naming convention and animation pattern as `#search-overlay`/`#search-modal`. The `kiln-fade-in`, `kiln-fade-out`, and `kiln-scale-in` keyframe animations already exist in `shared.css`.
-
-Verify: Run `go test ./...` to ensure nothing is broken.
+**Verify:** `go build ./...` must succeed. Run `templ generate` first if needed. Run `go test ./...`.
 </task>
 
-<task order="2" title="Remove old expanded CSS from default_style_input.css" depends_on="1">
-Edit `assets/default_style_input.css` to remove the old `.expanded` CSS rules that are no longer needed. These rules are at lines 74-116 of the file:
+<task order="5" title="Add back-to-top JS scroll logic" depends_on="4">
+Add JavaScript to show/hide the back-to-top button based on scroll position. The button should appear after scrolling down 300px and disappear when near the top.
 
-Remove these CSS rule blocks:
-- `.expanded #local-graph-wrapper` (lines 74-81)
-- `.expanded #local-graph-container` (lines 83-95)
-- `.expanded::before` (lines 97-107)
-- `.expanded #local-graph-wrapper header button` (lines 109-116)
+**File to edit:** `assets/default_app.js`
 
-After removing, the file should go from the `#right-sidebar.collapsed` closing brace directly to whatever follows (likely end of file or next rule block).
+Add a new function `window.initBackToTop` at the end of the file (before any closing block). This function should:
 
-Also check `assets/default_style.css` — it is the compiled output. The same `.expanded` rules exist there (around lines 912-949). Remove the matching CSS blocks from `assets/default_style.css` as well:
-- `.expanded #local-graph-wrapper`
-- `.expanded #local-graph-container`
-- `.expanded::before`
-- `.expanded #local-graph-wrapper header button`
+1. Find the button: `document.getElementById("back-to-top")`
+2. Find the scroll container: try `document.getElementById("content")` first (default layout), fall back to `document.querySelector("main")` (simple layout)
+3. Set up a scroll event listener on the scroll container that:
+   - Adds class `visible` to the button when `scrollTop > 300`
+   - Removes class `visible` when `scrollTop <= 300`
+4. Set up the button click handler to scroll the container to top with `behavior: "smooth"`
 
-Verify: Run `go test ./...` to ensure nothing is broken.
+Also, make sure `initBackToTop` is called in the DOMContentLoaded or htmx afterSwap handler. Look at how the file currently handles initialization — there's likely an `htmx:afterSwap` listener or a DOMContentLoaded block. Add `initBackToTop()` to both the initial page load and after htmx swaps.
+
+Search the existing `default_app.js` for the pattern used to reinitialize after htmx swaps (look for `htmx:afterSwap` or `htmx:afterSettle`) and add `window.initBackToTop()` to that same block.
+
+**Also edit:** `assets/simple_app.js` — Add the same `initBackToTop` function, but the scroll container should be `document.querySelector("main")` since the simple layout doesn't have a `#content` div with overflow. Follow the same pattern as the default app for initialization.
+
+**Remove** the inline `onclick` from the `BackToTop` templ component in `internal/templates/content.templ` since the JS now handles the click. Change the button to just:
+```html
+<button id="back-to-top" class="back-to-top" aria-label="Back to top" title="Back to top">
+```
+
+**Verify:** `go build ./...` must succeed. Run `go test ./...`.
 </task>
 
-<task order="3" title="Rewrite toggleGraphExpand in default_app.js" depends_on="2">
-Edit `assets/default_app.js` to replace `window.toggleGraphExpand` (lines 250-262) with a new overlay-based implementation modeled after the search overlay pattern in `assets/search.js`.
+<task order="6" title="Generate templ and verify full build" depends_on="5">
+Run the templ code generator and verify everything compiles and tests pass.
 
-The current implementation at lines 250-262 is:
-```js
-// Expands the graph
-window.toggleGraphExpand = function () {
-  var isExpanded = document.body.classList.toggle("expanded");
-  if (isExpanded) {
-    var handler = function(e) {
-      if (e.key === "Escape") {
-        document.body.classList.remove("expanded");
-        document.removeEventListener("keydown", handler);
-      }
-    };
-    document.addEventListener("keydown", handler);
-  }
-};
-```
+1. Run `templ generate` in the project root to regenerate all `_templ.go` files from the `.templ` sources.
+2. Run `go build ./...` to verify compilation.
+3. Run `go test ./...` to verify all tests pass.
+4. If there are any compilation errors from the templ-generated code (e.g., missing imports for `strconv`, `sort`, or `time` in templ files), fix the imports in the `.templ` source files and re-run `templ generate`.
+5. Verify that `assets/shared.css` contains both the `.note-meta-bar` and `.back-to-top` style blocks.
+6. Verify that `internal/templates/content.templ` contains both `NoteMetaBar` and `BackToTop` components.
 
-Replace it with this overlay-based implementation:
-
-```js
-// Graph expand overlay — mirrors the search overlay pattern from search.js
-function createGraphOverlay() {
-  var overlay = document.createElement("div");
-  overlay.id = "graph-overlay";
-  overlay.className = "hidden";
-
-  var modal = document.createElement("div");
-  modal.id = "graph-modal";
-
-  var closeBtn = document.createElement("button");
-  closeBtn.id = "graph-modal-close";
-  closeBtn.type = "button";
-  closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.innerHTML = "&times;";
-
-  var container = document.createElement("div");
-  container.id = "graph-modal-container";
-
-  modal.appendChild(closeBtn);
-  modal.appendChild(container);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  overlay.addEventListener("click", function (e) {
-    if (e.target === overlay) hideGraphOverlay();
-  });
-  closeBtn.addEventListener("click", function () {
-    hideGraphOverlay();
-  });
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
-      var ov = document.getElementById("graph-overlay");
-      if (ov && !ov.classList.contains("hidden")) {
-        hideGraphOverlay();
-      }
-    }
-  });
-
-  return overlay;
-}
-
-function getGraphOverlay() {
-  return document.getElementById("graph-overlay") || createGraphOverlay();
-}
-
-function showGraphOverlay() {
-  var overlay = getGraphOverlay();
-  overlay.classList.remove("hidden", "closing");
-}
-
-function hideGraphOverlay() {
-  var overlay = document.getElementById("graph-overlay");
-  if (!overlay || overlay.classList.contains("hidden")) return;
-  overlay.classList.add("closing");
-  overlay.addEventListener("animationend", function handler() {
-    overlay.removeEventListener("animationend", handler);
-    overlay.classList.add("hidden");
-    overlay.classList.remove("closing");
-  }, { once: true });
-}
-
-window.toggleGraphExpand = function () {
-  var overlay = getGraphOverlay();
-  if (overlay.classList.contains("hidden")) {
-    showGraphOverlay();
-    // Dispatch custom event so graph.js can render into the modal container
-    window.dispatchEvent(new CustomEvent("graph-overlay-opened"));
-  } else {
-    hideGraphOverlay();
-  }
-};
-```
-
-This creates the overlay DOM (`#graph-overlay` > `#graph-modal` > `#graph-modal-container`) lazily, supports Escape key, click-outside-to-close, and a close button. When opened, it dispatches a `"graph-overlay-opened"` custom event that `graph.js` will listen for to render into the new container.
-
-Verify: Run `go test ./...` to ensure nothing is broken.
-</task>
-
-<task order="4" title="Update graph.js to render into the overlay container" depends_on="3">
-Edit `assets/graph.js` to listen for the `"graph-overlay-opened"` custom event and render the local graph data into `#graph-modal-container`.
-
-At the end of the IIFE in `assets/graph.js`, just before the closing `})();` (before line 398), add a listener for the custom event:
-
-```js
-  // Listen for graph overlay open and render local graph into the modal
-  window.addEventListener("graph-overlay-opened", function () {
-    var modalContainer = document.getElementById("graph-modal-container");
-    if (!modalContainer) return;
-
-    if (!graphDataPromise) return;
-
-    graphDataPromise.then(function (data) {
-      if (!data) return;
-
-      var pageTitleEl = document.getElementById("page-title-data");
-      if (!pageTitleEl) return;
-
-      var currentTitle = pageTitleEl.dataset.title;
-      var localData = filterLocalData(
-        JSON.parse(JSON.stringify(data)),
-        currentTitle,
-      );
-
-      if (localData.nodes.length > 0) {
-        renderGraph(modalContainer, localData, true);
-      }
-    });
-  });
-```
-
-This reuses the existing `graphDataPromise`, `filterLocalData`, and `renderGraph` functions already in the IIFE scope. It renders the same local graph data (filtered by current page title) into the modal's container. The `renderGraph` function already reads dimensions from `container.getBoundingClientRect()`, so it will automatically use the 90vw x 90vh modal dimensions.
-
-Verify: Run `go test ./...` to ensure nothing is broken. Then manually verify by building the site with `go run ./cmd/kiln/main.go generate` (if a vault is available) and checking that the expand button in the right sidebar opens the overlay with the local graph rendered at full size.
+**Verify:** `go build ./...` and `go test ./...` must both succeed with zero errors.
 </task>
 </tasks>
