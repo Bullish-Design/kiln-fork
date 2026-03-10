@@ -2,6 +2,8 @@
 package templates
 
 import (
+	"time"
+
 	"github.com/otaleghani/kiln/internal/obsidian"
 	"github.com/otaleghani/kiln/internal/obsidian/bases"
 )
@@ -24,7 +26,17 @@ type PageData struct {
 	IsTag       bool
 	Is404       bool
 	Frontmatter map[string]any
+	Meta        *NoteMeta
 	Base        BaseViewData
+}
+
+// NoteMeta holds reading metadata for a note page.
+type NoteMeta struct {
+	WordCount   int
+	ReadingTime int // minutes
+	Created     time.Time
+	Modified    time.Time
+	Tags        []string
 }
 
 // SiteData holds global site configuration used across all pages.

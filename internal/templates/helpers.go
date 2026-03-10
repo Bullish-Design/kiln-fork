@@ -15,6 +15,24 @@ func FormatDate(t time.Time) string {
 	return t.Format("Jan 02, 2006")
 }
 
+// WordCount counts the number of words in content using whitespace splitting.
+func WordCount(content []byte) int {
+	return len(strings.Fields(string(content)))
+}
+
+// ReadingTimeFromWords returns the estimated reading time in minutes (min 1).
+func ReadingTimeFromWords(wordCount int) int {
+	if m := wordCount / 200; m > 1 {
+		return m
+	}
+	return 1
+}
+
+// FormatReadingTime returns a human-readable reading time string.
+func FormatReadingTime(minutes int) string {
+	return fmt.Sprintf("%d min read", minutes)
+}
+
 // toStr safely converts an interface value to a string.
 // Returns "" for nil values instead of panicking.
 func toStr(v any) string {

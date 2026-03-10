@@ -3,6 +3,7 @@ package builder
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/otaleghani/kiln/internal/obsidian"
 	"github.com/otaleghani/kiln/internal/templates"
@@ -35,6 +36,22 @@ func toTemplPageData(p *DefaultSitePageData) *templates.PageData {
 			DisableTOC:        p.Site.DisableTOC,
 			FlatURLs:          p.Site.FlatURLs,
 		},
+	}
+
+	if p.IsNote && p.File != nil {
+		wc := templates.WordCount(p.File.Content)
+		tags := make([]string, 0, len(p.File.Tags))
+		for t := range p.File.Tags {
+			tags = append(tags, t)
+		}
+		sort.Strings(tags)
+		data.Meta = &templates.NoteMeta{
+			WordCount:   wc,
+			ReadingTime: templates.ReadingTimeFromWords(wc),
+			Created:     p.File.Created,
+			Modified:    p.File.Modified,
+			Tags:        tags,
+		}
 	}
 
 	if p.IsBase && p.Base.File != nil && len(p.Base.File.Views) > 0 {
