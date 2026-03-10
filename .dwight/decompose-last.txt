@@ -1,168 +1,206 @@
 -- DwightAuto decomposition output
--- Request: The "Back to the top" button should appear inside the `<main>` tag. Then implement localization: a user could decide the language of the site, this adds the lang attribute in the html tag and changes 
--- Timestamp: Tue 10 Mar 2026 02:23:37 PM CET
+-- Request: Under docs you can find 3 empty files: "Feed RSS.md", "Image Optimization.md" and "Link Preview.md". Read the other files in the Features folder and create for these empty files the missing documentat
+-- Timestamp: Tue 10 Mar 2026 03:17:23 PM CET
 
-
-
-I have all the context I need. Let me finish the decomposition concisely.
+Now I have a thorough understanding of the documentation style and the technical details for all three features. Let me produce the task decomposition.
 
 <tasks>
-<task order="1" title="Move BackToTop button visually inside main">
-The BackToTop button is already inside `<main>` in the DOM (line 113 of `layout_default.templ`, line 67 of `layout_simple.templ`), but CSS `position: fixed` makes it overlap the right sidebar on desktop. Fix this so the button appears visually within the main content area.
+<task order="1" title="Write Feed RSS documentation">
+Write the documentation file `docs/Features/Feed RSS.md`. 
 
-**Files to edit:**
+Read the existing documentation files in `docs/Features/` to match the style exactly. All docs use YAML frontmatter with `title` and `description` fields, an H1 heading matching the title, an explanatory opening paragraph, then H2 sections. They use wikilinks (`[[Page Name]]`) for cross-references, code blocks with language identifiers, callout blocks (`> [!warning]`), bold for key terms, and tables where appropriate.
 
-1. **`internal/templates/layout_default.templ`** (line 92): Add `layout-default` class to `<main>`:
-   - Change: `<main class="flex-1 flex flex-col h-dvh overflow-hidden" id="kiln-main">`
-   - To: `<main class="flex-1 flex flex-col h-dvh overflow-hidden layout-default" id="kiln-main">`
+**Source code context for accuracy:**
+- RSS implementation lives in `internal/rss/rss.go` and `internal/obsidian/rss.go`
+- During vault scanning, every `.md` file is automatically processed for RSS inclusion
+- Metadata extracted per file: title (from frontmatter, falls back to filename), description (from frontmatter), WebPath, PubDate (file creation/birth time)
+- Entries are sorted newest-first and limited to 50 most recent
+- Output file is `feed.xml` in the output directory
+- RSS 2.0 compliant XML format
+- Channel title and link use the site's BaseURL
+- The `--url` flag is required for absolute URLs in the feed; without it, RSS generation is skipped
+- No explicit opt-in needed — all `.md` files are included automatically
+- No way to exclude specific files or customize max entries
 
-2. **`assets/shared.css`** (after line 1253, end of `.back-to-top` rules): Add a media query so the button shifts left when the right sidebar is visible (288px = w-72):
-   ```css
-   @media (min-width: 1280px) {
-     .layout-default .back-to-top {
-       right: calc(288px + 1.5rem);
-     }
-   }
-   ```
+**Document structure to follow:**
 
-3. **Regenerate templ**: Run `templ generate` from project root.
+```
+---
+title: "Feed RSS"
+description: "..."
+---
+# Feed RSS
 
-**Verify**: `go build ./...` and `go test ./...`
-</task>
+Opening paragraph explaining what RSS is and that Kiln auto-generates a feed.
 
-<task order="2" title="Add lang CLI flag and config plumbing" depends_on="1">
-Add a `lang` option flowing through CLI → config → builder → template types. Default: `"en"`.
+## Why it matters
+Explain RSS benefits for readers (subscribe, aggregators, etc.)
 
-**Files to edit:**
+## Configuration
+Explain the --url flag requirement (similar to Sitemap xml.md pattern).
+Include a bash code block showing the command.
+Add a callout warning about missing --url flag.
 
-1. **`internal/cli/commands.go`**: Add `DefaultLang = "en"` to defaults block (after line 31). Add `FlagLang = "lang"` and `FlagLangShort = "g"` to flag name block (after line 58). Add `lang string` to var block (after line 75).
+## How it works
+- All .md files included automatically
+- Title from frontmatter `title` field, falls back to filename
+- Description from frontmatter `description` field (optional)
+- Publication date from file creation time
+- Sorted newest first, max 50 entries
+- Output: `feed.xml` in root of output directory
 
-2. **`internal/cli/generate.go`**: In `init()`, register: `cmdGenerate.Flags().StringVarP(&lang, FlagLang, FlagLangShort, DefaultLang, "Language code for the site (e.g. en, it, fr)")`. In `runGenerate()`, add `applyStringFlag(cmd, FlagLang, &lang, cfg, DefaultLang)` and `builder.Lang = lang`.
+## Customizing entries
+Explain how frontmatter fields affect RSS output. Show a YAML frontmatter example.
 
-3. **`internal/config/config.go`**: Add `Lang string \`yaml:"lang"\`` to Config struct. Add `case "lang": val = c.Lang` to `ValueOr` switch.
-
-4. **`internal/builder/builder.go`**: Add `Lang string` to the var block.
-
-5. **`internal/templates/types.go`**: Add `Lang string` to `SiteData` struct.
-
-6. **`internal/builder/builder_default.go`**: Add `Lang string` to `DefaultSite` struct (~line 863). In `buildDefault()` where DefaultSite is initialized (~line 66), add `Lang: Lang,`.
-
-7. **`internal/builder/templ_adapter.go`**: In `toTemplPageData()`, add `Lang: p.Site.Lang,` to the SiteData block (~line 37).
-
-8. **`internal/templates/layout_default.templ`** (line 6): Change `<html lang="en">` to `<html lang={ data.Site.Lang }>`.
-
-9. **`internal/templates/layout_simple.templ`** (line 6): Change `<html lang="en">` to `<html lang={ data.Site.Lang }>`.
-
-10. **Regenerate templ**: Run `templ generate`.
-
-**Verify**: `go build ./...` and `go test ./...`
-</task>
-
-<task order="3" title="Create i18n package with label registry" depends_on="2">
-Create `internal/i18n/` package with a `Labels` struct and language registry.
-
-**Create `internal/i18n/i18n.go`** — Line 1: `// @feature:layouts Localization label registry for UI strings.`
-
-Define:
-```go
-type Labels struct {
-    SearchPlaceholder string // "Search notes..."
-    ToggleTheme       string // "Toggle theme"
-    BackToTop         string // "Back to top"
-    OnThisPage        string // "On this page"
-    TableOfContents   string // "Table of contents"
-    LocalGraph        string // "Local Graph"
-    GeneratedWith     string // "Generated with"
-    PageNotFound      string // "Page not found"
-    GoBackHome        string // "Go back home"
-    Folder            string // "Folder:"
-    Tag               string // "Tag:"
-    Updated           string // "Updated"
-    Created           string // "Created"
-    Words             string // "words"
-    MinRead           string // "%d min read" (fmt format)
-    Copy              string // "Copy"
-    NoResults         string // "No results found"
-    Search            string // "Search"
-    Navbar            string // "Navbar"
-    Expand            string // "Expand"
-    LastModified      string // "Last Modified"
-}
+## Limitations
+- Max 50 entries (hard-coded)
+- All .md files included, no way to exclude specific files
+- No full-text content in feed (title + description only)
+- Publication date uses file creation time, cannot override via frontmatter
+- Channel title uses BaseURL, not a custom site name
 ```
 
-Create `var languages = map[string]*Labels{...}` with `"en"` and `"it"` entries filled with appropriate translations.
+Use wikilinks to cross-reference related pages like `[[Sitemap xml]]`, `[[Configuration File]]`. Keep the tone instructional and clear, matching the existing docs. Do NOT add any `@feature:` pragma — this is a markdown documentation file, not source code.
 
-Create `func Resolve(lang string) *Labels` — returns labels for the given code, falls back to `"en"`.
-
-**Create `internal/i18n/i18n_test.go`** — Line 1: `// @feature:layouts Tests for localization label registry.`
-
-Tests:
-- `TestResolve_English`: Resolve("en") returns correct English labels
-- `TestResolve_Italian`: Resolve("it") returns Italian labels
-- `TestResolve_UnknownFallback`: Resolve("xx") returns English labels
-- `TestResolve_AllFieldsPopulated`: Use `reflect` to check no field is empty string for each supported language
-
-**Verify**: `go test ./internal/i18n/...`
+**Verify:** Read the file after writing to confirm it has proper frontmatter and is non-empty.
 </task>
 
-<task order="4" title="Wire labels into template data and replace hardcoded strings" depends_on="3">
-Pass `Labels` through template data and replace all hardcoded UI strings in `.templ` files and helpers.
+<task order="2" title="Write Image Optimization documentation">
+Write the documentation file `docs/Features/Image Optimization.md`.
 
-**Files to edit:**
+Read the existing documentation files in `docs/Features/` to match the style exactly. All docs use YAML frontmatter with `title` and `description` fields, an H1 heading matching the title, an explanatory opening paragraph, then H2 sections. They use wikilinks (`[[Page Name]]`) for cross-references, code blocks with language identifiers, callout blocks (`> [!tip]`, `> [!warning]`), bold for key terms, and tables where appropriate.
 
-1. **`internal/templates/types.go`**: Import `"github.com/otaleghani/kiln/internal/i18n"`. Add `Labels *i18n.Labels` to `SiteData` struct (existing fields: BaseURL, SiteName, Theme, NavbarRoot, DisableLocalGraph, DisableTOC, FlatURLs, Lang).
+**Source code context for accuracy:**
+- Implementation in `internal/imgopt/imgopt.go` and wired in `internal/builder/builder_default.go`
+- Responsive image rendering in `internal/obsidian/markdown/wikilinks.go`
+- Supported input formats: `.png`, `.jpg`, `.jpeg`
+- Output formats: AVIF (best compression), WebP (good compression), original format (fallback)
+- Default breakpoints: 1200px, 800px, 400px wide
+- Quality: 80 (hard-coded)
+- Requires external CLI tools: `cwebp` (from libwebp) for WebP, `avifenc` (from libavif) for AVIF
+- If tools are missing, graceful degradation — originals are copied as-is, no error
+- Each optimizable image produces up to 9 variants (3 sizes × 3 formats)
+- HTML output uses `<picture>` element with `<source>` tags for each format and `srcset`/`sizes` attributes
+- All images get `loading="lazy"` attribute
+- Images also get an expand button (lightbox) for full-size viewing
+- No user configuration needed — runs automatically at build time for supported formats
+- GIF, SVG, WebP inputs are NOT optimized (copied as-is)
 
-2. **`internal/builder/templ_adapter.go`**: Import `"github.com/otaleghani/kiln/internal/i18n"`. Add `Labels: i18n.Resolve(p.Site.Lang),` to the SiteData block in `toTemplPageData()`.
+**Document structure to follow:**
 
-3. **`internal/templates/helpers.go`**: Change `FormatReadingTime(minutes int) string` to `FormatReadingTime(minutes int, format string) string` — use `fmt.Sprintf(format, minutes)`.
+```
+---
+title: "Image Optimization"
+description: "..."
+---
+# Image Optimization
 
-4. **`internal/templates/content.templ`** — Replace hardcoded strings. For components that don't receive `data` (like `BackToTop()`, `SimpleSearchButton()`, `SimpleTOCButton()`, `SimpleLocalGraphButton()`, `SimpleMenuButton()`), change their signature to accept `labels *i18n.Labels`. Then update their call sites in `layout_default.templ` and `layout_simple.templ` to pass `data.Site.Labels`. Key replacements:
-   - `BackToTop()` → `BackToTop(data.Site.Labels)`: use `labels.BackToTop` for aria-label and title
-   - `NoteMetaBar`: use `data.Site.Labels.Words`, `.Updated`, `.Created`, `.MinRead` (pass format to `FormatReadingTime`)
-   - `Content404`: use `data.Site.Labels.PageNotFound`, `.GoBackHome`
-   - `ContentFolder`: use `data.Site.Labels.Folder`
-   - `ContentTag`: use `data.Site.Labels.Tag`
-   - `LocalGraph(disabled bool)` → `LocalGraph(disabled bool, labels *i18n.Labels)`: use `labels.LocalGraph`, `labels.Expand`
-   - `TOCPanel`: use `data.Site.Labels.OnThisPage`
-   - `SimpleSearchButton()` → `SimpleSearchButton(labels *i18n.Labels)`: use `labels.Search`
-   - `SimpleTOCButton()` → `SimpleTOCButton(labels *i18n.Labels)`: use `labels.TableOfContents`
-   - `SimpleLocalGraphButton()` → `SimpleLocalGraphButton(labels *i18n.Labels)`: use `labels.LocalGraph`
-   - `SimpleTOCContainer`: use `data.Site.Labels.TableOfContents`
-   - `SimpleMenuButton()` → `SimpleMenuButton(labels *i18n.Labels)`: use `labels.Navbar`
-   - Footer text in `SimpleMenu` and `layout_default.templ`: use `data.Site.Labels.GeneratedWith`
+Opening paragraph: Kiln automatically optimizes images at build time, generating responsive variants in modern formats.
 
-5. **`internal/templates/shared.templ`**: `ThemeToggler()` → `ThemeToggler(labels *i18n.Labels)`: use `labels.ToggleTheme` for aria-label. Update call sites in both layout files.
+## How it works
+Explain the pipeline: decode → resize at breakpoints → encode to AVIF/WebP/original → generate <picture> HTML.
+Mention breakpoints (1200, 800, 400), quality (80), and format priority.
 
-6. **`internal/templates/layout_default.templ`**: Update call sites — pass `data.Site.Labels` to changed component calls. Also update the search button placeholder (line 74): change `Search notes...` to `{ data.Site.Labels.SearchPlaceholder }`. Update footer `Generated with` text.
+## Supported formats
+Table showing input formats (.png, .jpg, .jpeg) and what they produce.
+Note that .gif, .svg, .webp are copied as-is without optimization.
 
-7. **`internal/templates/layout_simple.templ`**: Update call sites similarly.
+## Requirements
+Explain the two external tools needed:
+- `cwebp` from libwebp (for WebP)
+- `avifenc` from libavif (for AVIF)
+Include install commands for common systems (apt, brew, nix).
+Add a callout: if tools aren't installed, Kiln silently falls back to copying originals.
 
-8. **Regenerate templ**: Run `templ generate`.
+## The generated HTML
+Show the <picture> element structure with <source> tags. Explain srcset, sizes, and lazy loading.
+Mention the expand/lightbox button.
 
-**Verify**: `go build ./...` and `go test ./...`
+## Usage
+Explain that no configuration is needed. Just reference images normally in markdown:
+- `![alt](image.png)` or `![[image.png]]`
+Kiln handles the rest.
+
+## Limitations
+- External tools required for WebP/AVIF
+- Fixed breakpoints and quality (not configurable)
+- GIF/SVG not optimized
+- Increases output size (multiple variants per image)
+- Adds build time proportional to image count/size
+```
+
+Use wikilinks to cross-reference `[[Wikilinks]]` for image embedding syntax. Keep the tone instructional. Do NOT add any `@feature:` pragma.
+
+**Verify:** Read the file after writing to confirm it has proper frontmatter and is non-empty.
 </task>
 
-<task order="5" title="Pass labels to JavaScript for client-side strings" depends_on="4">
-Some UI strings live in JavaScript files (`assets/default_app.js`, `assets/simple_app.js`, `assets/search.js`): "Copy", "No results found". Pass them via a data attribute or inline script so they're localizable.
+<task order="3" title="Write Link Preview documentation">
+Write the documentation file `docs/Features/Link Preview.md`.
 
-**Files to edit:**
+Read the existing documentation files in `docs/Features/` to match the style exactly. All docs use YAML frontmatter with `title` and `description` fields, an H1 heading matching the title, an explanatory opening paragraph, then H2 sections. They use wikilinks (`[[Page Name]]`) for cross-references, code blocks, callout blocks, bold for key terms, and tables where appropriate.
 
-1. **`internal/templates/layout_default.templ`** and **`internal/templates/layout_simple.templ`**: Add a hidden element inside `<body>` that carries JS-facing labels as data attributes:
-   ```html
-   <div id="kiln-labels" hidden
-     data-copy={ data.Site.Labels.Copy }
-     data-no-results={ data.Site.Labels.NoResults }
-   ></div>
-   ```
+**Source code context for accuracy:**
+- Implementation in `assets/link_preview.js` (client-side JavaScript)
+- Styling in `assets/shared.css` (tooltip CSS with theme variable support)
+- Works only on desktop: requires viewport ≥1024px AND hover-capable device (`matchMedia("(hover: hover)")`)
+- Targets all `a.internal-link` elements (class added automatically by Kiln's markdown renderer for wikilinks)
+- Hover flow: 300ms delay → fetch target page HTML → parse and extract `#content .content` → render in tooltip
+- Tooltip positioning: prefers below link, falls above if insufficient space, constrained to viewport
+- Max tooltip size: 400px wide × 300px tall, scrollable if content overflows
+- In-memory cache (Map) persists for browser session — each page fetched only once
+- Tooltip inherits `.content` styles for visual consistency with page content
+- Tooltip respects light/dark theme via CSS variables
+- Automatically dismissed on navigation (htmx:beforeSwap), scroll, Escape key, or clicking outside
+- Fully automatic — no opt-in or configuration needed
+- Does NOT work for: external links, hash-only links (#), current page links, links with target="_blank"
+- No keyboard/accessibility support
+- Vanilla JavaScript, no external libraries
 
-2. **`assets/default_app.js`**: Where `btn.textContent = "Copy"` appears (lines 352, 360), read from `document.getElementById("kiln-labels")?.dataset.copy || "Copy"` instead.
+**Document structure to follow:**
 
-3. **`assets/simple_app.js`**: Same change for "Copy" strings (lines 252, 260).
+```
+---
+title: "Link Preview"
+description: "..."
+---
+# Link Preview
 
-4. **`assets/search.js`**: Where `msg.textContent = "No results found"` (line 176), read from `document.getElementById("kiln-labels")?.dataset.noResults || "No results found"`.
+Opening paragraph: Kiln shows a live preview tooltip when you hover over internal links, letting readers peek at content without navigating away.
 
-5. **Regenerate templ**: Run `templ generate`.
+## How it works
+Explain the hover → delay → fetch → render flow.
+Mention caching (fetched once per session).
+Mention tooltip positioning (below or above link).
 
-**Verify**: `go build ./...` and `go test ./...`
+## Compatibility
+- Desktop only (≥1024px viewport)
+- Hover-capable devices (not touch-only)
+- Modern browsers with JavaScript enabled
+Add a callout noting that on mobile/tablet the feature is automatically disabled — readers simply follow links normally.
+
+## What triggers a preview
+Explain which links get previews:
+- Internal wikilinks (rendered with class `internal-link`)
+- NOT external links, hash links, or links to the current page
+
+## Visual behavior
+- Tooltip appears after a short delay (300ms)
+- Max 400×300px, scrollable
+- Styled consistently with page content
+- Follows light/dark theme automatically
+- Dismissed by: moving mouse away, scrolling, pressing Escape, or navigating
+
+## Limitations
+- Desktop only — disabled on mobile and touch devices
+- No keyboard navigation or screen reader support
+- Downloads full page HTML to extract content (no dedicated preview endpoint)
+- Cache grows unbounded during session
+- No loading indicator during fetch
+- No error feedback if fetch fails
+```
+
+Use wikilinks to cross-reference `[[Wikilinks]]`, `[[Light-Dark Mode]]`, `[[Client Side Navigation]]`. Keep the tone instructional. Do NOT add any `@feature:` pragma.
+
+**Verify:** Read the file after writing to confirm it has proper frontmatter and is non-empty.
 </task>
 </tasks>
