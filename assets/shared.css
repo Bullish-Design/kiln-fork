@@ -1251,3 +1251,8 @@ details.callout[open] > summary .callout-title::after {
 .back-to-top:hover svg {
   transform: translateY(-2px);
 }
+@media (min-width: 1280px) {
+  .layout-default .back-to-top {
+    right: calc(288px + 1.5rem);
+  }
+}
