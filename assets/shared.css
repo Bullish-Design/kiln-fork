@@ -1136,6 +1136,44 @@ details.callout[open] > summary .callout-title::after {
   margin-bottom: 0.5rem;
 }
 
+/* NOTE META BAR */
+.note-meta-bar {
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+  font-size: 0.8rem;
+  color: var(--color-comment);
+  line-height: 1.5;
+}
+.note-meta-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+.note-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.note-meta-item svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+.note-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.note-meta-tag {
+  background: var(--hover-color);
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
 /* Navbar folder height animation */
 #left-sidebar details > ul,
 #menu-wrapper details > ul {
