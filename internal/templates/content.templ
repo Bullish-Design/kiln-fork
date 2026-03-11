@@ -396,6 +396,29 @@ templ TOCPanel(data *PageData) {
 	}
 }
 
+// BacklinksPanel renders the backlinks section for the default layout sidebar.
+templ BacklinksPanel(data *PageData) {
+	if !data.Site.DisableBacklinks && len(data.Backlinks) > 0 {
+		<div id="backlinks-container" hx-swap-oob="true">
+			<header class="flex justify-between items-center py-2 border-b border-sidebar-border mb-4">
+				<span class="font-bold">{ data.Site.Labels.Backlinks }</span>
+			</header>
+			<ul class="flex flex-col gap-1">
+				for _, bl := range data.Backlinks {
+					<li>
+						<a
+							href={ templ.SafeURL(bl.WebPath) }
+							class="text-sm hover:text-accent transition-colors"
+						>
+							{ bl.Name }
+						</a>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
 // SimpleSearchButton renders the search icon button for the simple layout header.
 templ SimpleSearchButton(labels *i18n.Labels) {
 	<div>
