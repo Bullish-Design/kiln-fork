@@ -41,7 +41,7 @@ These features were on the roadmap and have since been shipped:
 *Tools to help you manage and publish your digital garden.*
 
 - [x] **Reading Metadata:** Display "Last Updated" and "Time to Read" indicators on every page.
-- [ ] **Backlinks Panel:** A dedicated sidebar section showing all incoming links to the current page.
+- [x] **Backlinks Panel:** A dedicated sidebar section showing all incoming links to the current page.
 - [x] **RSS Feeds:** Automatic RSS/Atom feed generation for blog-style vaults, making it easy for readers to subscribe.
 - [ ] **Draft Support:** Exclude work-in-progress pages from the build using frontmatter flags. For now, you can use [hidden files and folders](./Features/Rendering/Hidden files folders.md) to keep content out of the generated site.
 - [ ] **Privacy Controls:** Hide specific pages or folders from the published site via frontmatter.
