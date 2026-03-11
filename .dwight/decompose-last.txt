@@ -1,162 +1,108 @@
 -- DwightAuto decomposition output
--- Request: The backlink section in the right sidebar is good, but it has a fatal flaw: the HTMX request doesn't swap just the container with id `content` with the incoming container with id `content`, but with t
--- Timestamp: Wed 11 Mar 2026 03:07:32 PM CET
+-- Request: Create the documentation under docs for the backlinks that are shown in the right sidebar.
+-- Timestamp: Wed 11 Mar 2026 04:39:02 PM CET
 
-Now I understand the full picture. Let me analyze the architecture:
-
-**Default layout:**
-- `<body>` has `hx-boost="true" hx-select="#kiln-main" hx-target="#kiln-main" hx-swap="outerHTML"`
-- `#kiln-main` is the `<main>` element containing the header + content areas (but NOT the sidebars)
-- Both `TOCPanel` and `BacklinksPanel` use `hx-swap-oob="true"` on their containers, which means HTMX should update them out-of-band when they appear in the response
-- The backlinks links are plain `<a href>` tags — so `hx-boost` picks them up
-
-**Simple layout:**
-- `<body>` has `hx-boost="true" hx-swap="outerHTML"` but NO `hx-select` or `hx-target`
-- This means boosted links swap the **entire body** with the response body
-- This is the problematic layout — clicking a backlink causes the whole page to be replaced
-
-The issue is actually about the **simple layout** missing `hx-select` and `hx-target`, meaning every boosted link replaces the whole page. But wait — let me re-read the user's complaint: "the HTMX request doesn't swap just the container with id `content` with the incoming container with id `content`, but with the entire page. This basically means after clicking on a backlink a new left sidebar and right sidebar appear together with the content."
-
-This sounds like it's about the **default layout** where left/right sidebars exist. The `hx-select="#kiln-main"` and `hx-target="#kiln-main"` should work — but the `hx-swap-oob` on backlinks-container means it's supposed to update out-of-band. The problem might be that the OOB swap is interfering, or that the content isn't being properly selected.
-
-Let me think more carefully. The user says "a new left sidebar and right sidebar appear together with the content." This means that after clicking a backlink, the response HTML is being inserted in a way that includes sidebars. Given that `hx-select="#kiln-main"` should extract only `#kiln-main` from the response... but `#kiln-main` is the `<main>` element. If HTMX fetches the full page, selects `#kiln-main`, and swaps it outerHTML... that should work correctly for the default layout.
-
-Wait — unless the `hx-swap-oob` on `BacklinksPanel` (which is INSIDE the right sidebar, not inside `#kiln-main`) is causing issues. Let me look at where `BacklinksPanel` is rendered relative to `#kiln-main`:
-
-- `#kiln-main` (lines 98-120) contains the main content
-- Right sidebar (lines 122-150) is OUTSIDE `#kiln-main` and contains `BacklinksPanel` at line 148
-- `BacklinksPanel` renders `<div id="backlinks-container" hx-swap-oob="true">` 
-
-So when HTMX selects `#kiln-main` from the response, the `backlinks-container` with `hx-swap-oob` is NOT inside `#kiln-main` — it's in the sidebar. HTMX should process OOB elements from the selected content... but the backlinks div isn't inside `#kiln-main`. This might mean the OOB swap doesn't get processed.
-
-Actually wait, let me reconsider. The user explicitly says "a new left sidebar and right sidebar appear **together with the content**". This suggests the ENTIRE page is being rendered inside the content area. This could happen if `hx-select` doesn't work properly or if the backlinks links have some attribute that overrides the body-level settings.
-
-The most likely explanation: the backlinks are plain `<a>` tags. With `hx-boost="true"` on body, HTMX intercepts them. The body-level `hx-select="#kiln-main"` and `hx-target="#kiln-main"` should apply. But perhaps HTMX isn't correctly inheriting these attributes for boosted links? Or there could be a version-specific issue with HTMX 1.9.10.
-
-Actually, I just realized something crucial. Let me check the HTMX docs: `hx-select` on boosted links — in HTMX 1.9.x, `hx-boost` inherits `hx-target` and `hx-swap` from parent elements, but `hx-select` might not be inherited for boosted links in all cases.
-
-Looking at this more pragmatically, the fix should ensure that backlink `<a>` tags explicitly carry the right HTMX attributes to swap only `#kiln-main`, or we should investigate why the body-level settings aren't being inherited.
+Here's the decomposition for creating backlinks documentation:
 
 <tasks>
-<task order="1" title="Fix backlinks HTMX swap in default layout">
-**Problem**: In the default layout, clicking a backlink in the right sidebar causes the entire page (including sidebars) to appear inside the content area instead of properly swapping just `#kiln-main`. The backlinks are plain `<a href>` tags in `BacklinksPanel` that rely on `hx-boost="true"` inheritance from the `<body>` tag, but the body-level `hx-select="#kiln-main"` and `hx-target="#kiln-main"` attributes may not be properly inherited by boosted links.
+<task order="1" title="Create Backlinks documentation page">
+Create a new documentation file at `docs/Features/User Interface/Backlinks.md` that documents the backlinks feature shown in the right sidebar.
 
-**Files to edit**:
-- `/home/oliviero/Workspace/kiln/internal/templates/content.templ` — the `BacklinksPanel` templ component (around lines 399-420)
+Follow the EXACT same documentation format used by other User Interface feature docs in this project (e.g., `docs/Features/User Interface/Table of Contents.md`, `docs/Features/User Interface/Local Graph.md`, `docs/Features/User Interface/Layouts.md`). The format is:
 
-**What to do**:
-1. Read the file `/home/oliviero/Workspace/kiln/internal/templates/content.templ` around lines 399-420 to see the `BacklinksPanel` component
-2. Read the file `/home/oliviero/Workspace/kiln/internal/templates/layout_default.templ` lines 38-41 to see the body-level HTMX attributes: `hx-boost="true"`, `hx-select="#kiln-main"`, `hx-target="#kiln-main"`, `hx-swap="outerHTML"`
-3. Modify the `<a>` tags inside the `BacklinksPanel` component to explicitly include HTMX attributes that ensure only `#kiln-main` is swapped. Change:
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    class="text-sm hover:text-accent transition-colors"
->
+1. YAML frontmatter with `title` and `description` fields
+2. H1 heading matching the title
+3. Overview paragraph explaining what backlinks are
+4. Sections covering the feature
+
+Here is the content to write:
+
+**Frontmatter:**
+- title: Backlinks
+- description: Kiln automatically detects and displays backlinks in the right sidebar, showing every page in your vault that links to the current page.
+
+**Sections to include:**
+
+### Overview (after H1, no heading)
+Explain that Kiln scans your vault for [[Wikilinks]] and standard Markdown links, then builds a reverse index. For every page, the **Backlinks** panel in the **Right Sidebar** lists all other pages that link to it. This helps readers discover related content and navigate your knowledge graph in reverse.
+
+### Why it is useful
+- In a wiki or digital garden, backlinks reveal hidden relationships between notes
+- They answer "What pages reference this concept?" without manual curation
+- They complement the [[Local Graph]] by providing a clickable list of incoming connections
+
+### How it works
+Explain the generation process:
+1. During the build, Kiln scans every note for outgoing links (both `[[wikilinks]]` and `[markdown](links.md)`)
+2. For each link found, a reverse reference is recorded on the target page
+3. The result is a list of all pages that point to the current page
+4. Self-links are excluded — a page cannot appear in its own backlinks
+5. Duplicate links from the same source are deduplicated
+
+### Behavior by Layout
+
+#### Default Layout
+- Backlinks appear in the **Right Sidebar**, below the [[Table of Contents]] and [[Local Graph]]
+- Each backlink is a clickable link that navigates to the source page
+- Navigation uses [[Client Side Navigation]] (HTMX) for instant page transitions without a full reload
+
+#### Simple Layout
+- Backlinks are accessed via a floating action button in the header bar
+- Clicking the button opens a panel overlay listing all incoming links
+- The button only appears when the current page has at least one backlink
+
+### Disabling Backlinks
+If your site does not need backlinks, you can hide them using the `--disable-backlinks` flag:
+
+```bash
+kiln generate --disable-backlinks
 ```
-to:
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    hx-get={ string(templ.SafeURL(bl.WebPath)) }
-    hx-target="#kiln-main"
-    hx-select="#kiln-main"
-    hx-swap="outerHTML"
-    hx-push-url="true"
-    class="text-sm hover:text-accent transition-colors"
->
+
+Or set it permanently in your `kiln.yaml` configuration file:
+
+```yaml
+disable-backlinks: true
 ```
 
-This makes the backlinks explicitly tell HTMX to: fetch the page, select only `#kiln-main` from the response, and replace the current `#kiln-main` with it, while updating the browser URL.
+When disabled, the backlinks panel is hidden from both the default and simple layouts. See [[Configuration File]] for all available options.
 
-4. After editing, run `cd /home/oliviero/Workspace/kiln && go run github.com/a-h/templ/cmd/templ@v0.3.1001 generate` to regenerate the `_templ.go` files.
-5. Verify the build compiles: `cd /home/oliviero/Workspace/kiln && go build ./...`
+**Cross-references to use (as wikilinks):**
+- [[Wikilinks]]
+- [[Local Graph]]
+- [[Table of Contents]]
+- [[Client Side Navigation]]
+- [[Configuration File]]
+- [[Global Graph]]
 
-**Important note**: The `BacklinksPanel` also has `hx-swap-oob="true"` on its container div (`<div id="backlinks-container" hx-swap-oob="true">`). This is used for out-of-band updates when the main content swaps — the backlinks panel in the sidebar should update with new backlinks for the newly loaded page. Do NOT remove this attribute. The OOB swap is a separate mechanism that should continue working: when HTMX swaps `#kiln-main`, it also looks for OOB elements in the response to update other parts of the page.
-
-**Verify**: `cd /home/oliviero/Workspace/kiln && go build ./... && go test ./...`
+**Verify:** Check that the file exists at `docs/Features/User Interface/Backlinks.md` and has valid YAML frontmatter.
 </task>
-<task order="2" title="Fix backlinks HTMX swap in simple layout" depends_on="1">
-**Problem**: The simple layout has a similar issue with backlinks in `SimpleBacklinksContainer`. The simple layout's `<body>` tag only has `hx-boost="true" hx-swap="outerHTML"` with NO `hx-select` or `hx-target`, so boosted links replace the entire body content, which means the whole page gets duplicated inside the body.
+<task order="2" title="Update generate command docs and layouts docs with backlinks references" depends_on="1">
+Update two existing documentation files to reference the new Backlinks page:
 
-**Files to edit**:
-- `/home/oliviero/Workspace/kiln/internal/templates/content.templ` — the `SimpleBacklinksContainer` templ component (around lines 594-622)
+**File 1: `docs/Commands/generate.md`**
 
-**What to do**:
-1. Read `/home/oliviero/Workspace/kiln/internal/templates/content.templ` around lines 594-622 to see the `SimpleBacklinksContainer` component
-2. Read `/home/oliviero/Workspace/kiln/internal/templates/layout_simple.templ` to understand the simple layout structure. Note: the simple layout has no `#kiln-main` id on its `<main>` element (just `class="flex-1 flex flex-col h-dvh overflow-y-scroll markdown-body"`). The body tag is `<body hx-boost="true" hx-swap="outerHTML" class="bg-background relative">`.
-3. Modify the `<a>` tags inside `SimpleBacklinksContainer` to explicitly include HTMX navigation attributes. The simple layout doesn't have `hx-select` or `hx-target` on the body, so we need to be more explicit. Change:
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    class="text-sm hover:text-accent transition-colors"
->
+In the Flags table (around line 28-41), add a new row for the `--disable-backlinks` flag. It should be inserted after the `--disable-local-graph` row (line 40). The new row should be:
+
 ```
-to:
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    hx-get={ string(templ.SafeURL(bl.WebPath)) }
-    hx-target="body"
-    hx-select="body"
-    hx-swap="innerHTML"
-    hx-push-url="true"
-    class="text-sm hover:text-accent transition-colors"
->
+| `--disable-backlinks`   |       | `false`   | Hides the [[Backlinks]] panel from the right sidebar.                                                                    |
 ```
 
-Wait — actually, for the simple layout, since the body-level `hx-boost` with `hx-swap="outerHTML"` works for regular sidebar navigation links (presumably), the same approach should work for backlinks too. The fact that it doesn't work suggests a different issue.
+Also update the `--disable-local-graph` description on line 40. The current text says "Disabling both TOC and local graph removes the right sidebar entirely." Change it to say "Disabling TOC, local graph, and backlinks removes the right sidebar entirely."
 
-Actually, the safest fix for the simple layout is the same approach as the default layout: make the backlinks navigate like normal boosted links but ensure they're consistent. Since the simple layout doesn't have `hx-select`/`hx-target` on the body, boosted links effectively do a full-page navigation via HTMX (replacing body outerHTML). For consistency and correctness, we should add `hx-boost="true"` explicitly on these links, OR simply ensure they behave like all other navigation links in the simple layout.
+**File 2: `docs/Features/User Interface/Layouts.md`**
 
-Looking more carefully at the simple layout: the body has `hx-boost="true" hx-swap="outerHTML"`. This means ALL `<a>` tags inside the body are boosted. For boosted links, HTMX fetches the page and uses the body's swap strategy. Without `hx-select`, it takes the entire response body and swaps it as `outerHTML` of the `<body>`. This would effectively replace the body with the full HTML response... which would include `<html><head>...` elements.
+In the "Layout Details" section:
 
-The real fix for simple layout might be to add `hx-select="body"` to the body tag. But that's a broader change. For now, to fix just the backlinks:
+1. Under "### Default (Obsidian Parity)" (around line 33-38), the Right Sidebar bullet currently says:
+   `- **Right Sidebar:** Contains the **[[Table of Contents]]** and **[[Local Graph]]**.`
+   Change it to:
+   `- **Right Sidebar:** Contains the **[[Table of Contents]]**, **[[Local Graph]]**, and **[[Backlinks]]**.`
 
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    class="text-sm hover:text-accent transition-colors"
->
-```
+2. Under "### Simple (Minimalist)" (around line 40-44), the "Action Buttons" bullet currently says:
+   `- **Action Buttons:** Tools like the Graph, Table of Contents, and Search are tucked away behind floating buttons or a simplified header.`
+   Change it to:
+   `- **Action Buttons:** Tools like the Graph, Table of Contents, Backlinks, and Search are tucked away behind floating buttons or a simplified header.`
 
-Since these links are INSIDE the `backlinks-wrapper` div which is a direct child of `<body>`, they should inherit `hx-boost="true"`. If the issue is specifically with backlinks, the backlinks panel overlay might be interfering. The backlinks wrapper has `class="fixed inset-0 z-40 ... hidden"` — it's an overlay/modal.
-
-The safest approach: add explicit HTMX attributes to the backlinks `<a>` tags that match what regular navigation does in the simple layout. This means the link click should navigate to the new page properly. Use `hx-get` with the URL, targeting the whole body replacement:
-
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    hx-boost="true"
-    class="text-sm hover:text-accent transition-colors"
->
-```
-
-If regular `hx-boost` from the body already applies, and it works for sidebar links but not backlinks, the issue might be that the overlay prevents proper inheritance. In that case, explicitly setting `hx-boost="true"` on the link itself should fix it.
-
-**Final approach**: Apply the same explicit HTMX attributes to the simple layout backlinks as in task 1, but adapted for the simple layout's navigation pattern. Since the simple layout doesn't use `#kiln-main`, keep it simple:
-
-```templ
-<a
-    href={ templ.SafeURL(bl.WebPath) }
-    hx-boost="true"
-    class="text-sm hover:text-accent transition-colors"
->
-```
-
-4. After editing, run `cd /home/oliviero/Workspace/kiln && go run github.com/a-h/templ/cmd/templ@v0.3.1001 generate` to regenerate the `_templ.go` files.
-5. Verify: `cd /home/oliviero/Workspace/kiln && go build ./... && go test ./...`
-</task>
-<task order="3" title="Test with actual vault build and verify HTML output" depends_on="2">
-**Purpose**: Verify that the generated HTML output for backlinks contains the correct HTMX attributes.
-
-**What to do**:
-1. Run the full test suite: `cd /home/oliviero/Workspace/kiln && go test ./...`
-2. Check the generated Go template files to verify the HTMX attributes are present in the output:
-   - Read `/home/oliviero/Workspace/kiln/internal/templates/content_templ.go` and search for `backlinks-container` to verify the `hx-get`, `hx-target`, `hx-select`, `hx-swap`, and `hx-push-url` attributes are in the generated Go code for the `BacklinksPanel` component
-   - Also search for `SimpleBacklinksContainer` in the same file to verify the simple layout backlinks have the correct attributes
-3. If anything looks wrong, go back to `/home/oliviero/Workspace/kiln/internal/templates/content.templ` and fix the templ source, then regenerate.
-
-**Verify**: `cd /home/oliviero/Workspace/kiln && go build ./... && go test ./...`
+**Verify:** Read the edited files and confirm the backlinks references are present and properly formatted.
 </task>
 </tasks>
