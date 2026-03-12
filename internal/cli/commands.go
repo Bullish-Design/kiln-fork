@@ -105,6 +105,7 @@ It supports wikilinks, callouts, mermaid diagrams, and graph visualization.`,
 	rootCmd.AddCommand(cmdDoctor)   // Checks for common issues
 	rootCmd.AddCommand(cmdStats)    // Displays vault statistics
 	rootCmd.AddCommand(cmdVersion)  // Version of the program
+	rootCmd.AddCommand(cmdDev)      // Build, watch, and serve
 
 	return rootCmd
 }
