@@ -474,6 +474,15 @@ func (o *Obsidian) Scan() error {
 			return nil
 		}
 
+		// Skip special files handled by dedicated loaders (LoadRedirects, LoadCname, LoadFavicon)
+		if !info.IsDir() {
+			base := filepath.Base(path)
+			if base == "_redirects" || base == "CNAME" || base == "favicon.ico" {
+				l.Debug("Skipping special file", "reason", "Handled by dedicated loader")
+				return nil
+			}
+		}
+
 		// Skip directories
 		if info.IsDir() {
 			folder, err := o.NewFolder(path)
