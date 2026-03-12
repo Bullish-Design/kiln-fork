@@ -1,108 +1,176 @@
 -- DwightAuto decomposition output
--- Request: Create the documentation under docs for the backlinks that are shown in the right sidebar.
--- Timestamp: Wed 11 Mar 2026 04:39:02 PM CET
+-- Request: Create an Incremental / Watch Builds feature.
+Currently `kiln build` regenerates the entire site. Adding file-system watching (via `fsnotify`) and incremental rebuilds—only re-rendering changed note
+-- Timestamp: Thu 12 Mar 2026 08:43:26 AM CET
 
-Here's the decomposition for creating backlinks documentation:
+
+
+Continuing from task 6:
 
 <tasks>
-<task order="1" title="Create Backlinks documentation page">
-Create a new documentation file at `docs/Features/User Interface/Backlinks.md` that documents the backlinks feature shown in the right sidebar.
+<task order="1" title="Dependency graph tracker">
+Create `internal/watch/depgraph.go` — a dependency graph that maps each vault file to the set of files that depend on it (via wikilinks/backlinks). This is the foundation for knowing which files to re-render when a source file changes.
 
-Follow the EXACT same documentation format used by other User Interface feature docs in this project (e.g., `docs/Features/User Interface/Table of Contents.md`, `docs/Features/User Interface/Local Graph.md`, `docs/Features/User Interface/Layouts.md`). The format is:
+**Files to create:**
+- `internal/watch/depgraph.go` — `// @feature:watch Dependency graph for incremental rebuild invalidation.`
+- `internal/watch/depgraph_test.go` — `// @feature:watch Tests for dependency graph.`
 
-1. YAML frontmatter with `title` and `description` fields
-2. H1 heading matching the title
-3. Overview paragraph explaining what backlinks are
-4. Sections covering the feature
+**Types and functions:**
 
-Here is the content to write:
+```go
+package watch
 
-**Frontmatter:**
-- title: Backlinks
-- description: Kiln automatically detects and displays backlinks in the right sidebar, showing every page in your vault that links to the current page.
+type DepGraph struct {
+    Forward map[string]map[string]struct{} // source RelPath -> set of target names
+    Reverse map[string]map[string]struct{} // target name -> set of source RelPaths
+}
 
-**Sections to include:**
-
-### Overview (after H1, no heading)
-Explain that Kiln scans your vault for [[Wikilinks]] and standard Markdown links, then builds a reverse index. For every page, the **Backlinks** panel in the **Right Sidebar** lists all other pages that link to it. This helps readers discover related content and navigate your knowledge graph in reverse.
-
-### Why it is useful
-- In a wiki or digital garden, backlinks reveal hidden relationships between notes
-- They answer "What pages reference this concept?" without manual curation
-- They complement the [[Local Graph]] by providing a clickable list of incoming connections
-
-### How it works
-Explain the generation process:
-1. During the build, Kiln scans every note for outgoing links (both `[[wikilinks]]` and `[markdown](links.md)`)
-2. For each link found, a reverse reference is recorded on the target page
-3. The result is a list of all pages that point to the current page
-4. Self-links are excluded — a page cannot appear in its own backlinks
-5. Duplicate links from the same source are deduplicated
-
-### Behavior by Layout
-
-#### Default Layout
-- Backlinks appear in the **Right Sidebar**, below the [[Table of Contents]] and [[Local Graph]]
-- Each backlink is a clickable link that navigates to the source page
-- Navigation uses [[Client Side Navigation]] (HTMX) for instant page transitions without a full reload
-
-#### Simple Layout
-- Backlinks are accessed via a floating action button in the header bar
-- Clicking the button opens a panel overlay listing all incoming links
-- The button only appears when the current page has at least one backlink
-
-### Disabling Backlinks
-If your site does not need backlinks, you can hide them using the `--disable-backlinks` flag:
-
-```bash
-kiln generate --disable-backlinks
+func NewDepGraph() *DepGraph
+func (g *DepGraph) AddEdge(sourceRelPath, targetName string)
+func (g *DepGraph) RemoveSource(sourceRelPath string)
+func (g *DepGraph) Dependents(name string) []string
+func (g *DepGraph) BuildFromFiles(files []*obsidian.File)
 ```
 
-Or set it permanently in your `kiln.yaml` configuration file:
+Import `github.com/otaleghani/kiln/internal/obsidian`. The `File` struct has `RelPath string`, `Ext string`, `Name string`, `Links []string` (raw wikilinks like `[[Target]]` or markdown links like `[text](path.md)`).
 
-```yaml
-disable-backlinks: true
-```
+`BuildFromFiles`: for each `.md` file, parse `file.Links` to extract target names. For wikilinks: strip `[[`/`]]`, remove alias after `|`, remove anchor after `#`, take `filepath.Base` if contains `/`, lowercase. For markdown links `[text](path)`: extract path, skip http/https/mailto, remove anchor, take `filepath.Base`, strip `.md`, lowercase.
 
-When disabled, the backlinks panel is hidden from both the default and simple layouts. See [[Configuration File]] for all available options.
+**Tests (write first):**
+1. `TestNewDepGraph` — empty graph, no dependents.
+2. `TestAddEdgeAndDependents` — add A->B, C->B; `Dependents("b")` returns {A,C}.
+3. `TestRemoveSource` — remove A; `Dependents("b")` returns {C}.
+4. `TestBuildFromFiles` — mock files with Links `[[NoteB]]` and `[text](./notec.md)`; verify dependents.
 
-**Cross-references to use (as wikilinks):**
-- [[Wikilinks]]
-- [[Local Graph]]
-- [[Table of Contents]]
-- [[Client Side Navigation]]
-- [[Configuration File]]
-- [[Global Graph]]
-
-**Verify:** Check that the file exists at `docs/Features/User Interface/Backlinks.md` and has valid YAML frontmatter.
+**Verify:** `go test ./internal/watch/...`
 </task>
-<task order="2" title="Update generate command docs and layouts docs with backlinks references" depends_on="1">
-Update two existing documentation files to reference the new Backlinks page:
 
-**File 1: `docs/Commands/generate.md`**
+<task order="2" title="Mtime store for change detection" depends_on="1">
+Create `internal/watch/mtimestore.go` — tracks file modification times and computes which files changed.
 
-In the Flags table (around line 28-41), add a new row for the `--disable-backlinks` flag. It should be inserted after the `--disable-local-graph` row (line 40). The new row should be:
+**Files to create:**
+- `internal/watch/mtimestore.go` — `// @feature:watch File modification time tracking for incremental builds.`
+- `internal/watch/mtimestore_test.go` — `// @feature:watch Tests for mtime store.`
 
+```go
+package watch
+
+type MtimeStore struct {
+    Entries map[string]time.Time // key = RelPath
+}
+
+func NewMtimeStore() *MtimeStore
+func (s *MtimeStore) Update(inputDir string) (changed []string, removed []string, err error)
 ```
-| `--disable-backlinks`   |       | `false`   | Hides the [[Backlinks]] panel from the right sidebar.                                                                    |
+
+`Update` walks `inputDir` with `filepath.WalkDir`, skips dotfiles and `_hidden_` prefixed paths (matching `obsidian.Scan` at `internal/obsidian/obsidian.go:466-475`), computes RelPath via `filepath.Rel`, compares `info.ModTime()` against stored value. After walk, previously-tracked but unseen paths are `removed`.
+
+**Tests (write first):**
+1. `TestUpdateNewFiles` — 2 files, both in `changed`.
+2. `TestUpdateUnchanged` — second call returns empty.
+3. `TestUpdateModifiedFile` — rewrite file to bump mtime, only it appears in `changed`.
+4. `TestUpdateRemovedFile` — delete file, appears in `removed`.
+5. `TestSkipsDotfiles` — `.hidden` file never reported.
+
+**Verify:** `go test ./internal/watch/...`
+</task>
+
+<task order="3" title="Changeset computation with invalidation" depends_on="2">
+Create `internal/watch/changeset.go` — expands mtime changes using the dependency graph.
+
+**Files to create:**
+- `internal/watch/changeset.go` — `// @feature:watch Changeset computation combining mtime changes with dependency graph invalidation.`
+- `internal/watch/changeset_test.go` — `// @feature:watch Tests for changeset computation.`
+
+```go
+package watch
+
+type ChangeSet struct {
+    Rebuild []string // RelPaths to re-render
+    Remove  []string // RelPaths to delete from output
+}
+
+func ComputeChangeSet(changed, removed []string, graph *DepGraph) *ChangeSet
 ```
 
-Also update the `--disable-local-graph` description on line 40. The current text says "Disabling both TOC and local graph removes the right sidebar entirely." Change it to say "Disabling TOC, local graph, and backlinks removes the right sidebar entirely."
+Logic: start with `rebuild = set(changed)`. For each changed/removed file, extract name (base, lowercase, strip `.md`), call `graph.Dependents(name)`, add to rebuild. For removed, also call `graph.RemoveSource`. Deduplicate rebuild, exclude removed paths.
 
-**File 2: `docs/Features/User Interface/Layouts.md`**
+**Tests (write first):**
+1. `TestComputeChangeSetSimple` — one changed, no dependents.
+2. `TestComputeChangeSetWithDependents` — B links to A; A changes → both in rebuild.
+3. `TestComputeChangeSetRemoved` — A removed, dependent B in rebuild, A in remove only.
+4. `TestComputeChangeSetDedup` — no duplicates.
 
-In the "Layout Details" section:
+**Verify:** `go test ./internal/watch/...`
+</task>
 
-1. Under "### Default (Obsidian Parity)" (around line 33-38), the Right Sidebar bullet currently says:
-   `- **Right Sidebar:** Contains the **[[Table of Contents]]** and **[[Local Graph]]**.`
-   Change it to:
-   `- **Right Sidebar:** Contains the **[[Table of Contents]]**, **[[Local Graph]]**, and **[[Backlinks]]**.`
+<task order="4" title="Fsnotify watcher with debounce" depends_on="3">
+Create `internal/watch/watcher.go` — fsnotify watcher with debounce. Add the `fsnotify` dependency.
 
-2. Under "### Simple (Minimalist)" (around line 40-44), the "Action Buttons" bullet currently says:
-   `- **Action Buttons:** Tools like the Graph, Table of Contents, and Search are tucked away behind floating buttons or a simplified header.`
-   Change it to:
-   `- **Action Buttons:** Tools like the Graph, Table of Contents, Backlinks, and Search are tucked away behind floating buttons or a simplified header.`
+**Run first:** `go get github.com/fsnotify/fsnotify@latest`
 
-**Verify:** Read the edited files and confirm the backlinks references are present and properly formatted.
+**Files to create:**
+- `internal/watch/watcher.go` — `// @feature:watch Filesystem watcher using fsnotify with debounced rebuild trigger.`
+- `internal/watch/watcher_test.go` — `// @feature:watch Tests for filesystem watcher.`
+
+```go
+package watch
+
+const DefaultDebounce = 300 * time.Millisecond
+
+type RebuildFunc func() error
+
+type Watcher struct {
+    InputDir  string
+    Debounce  time.Duration
+    Log       *slog.Logger
+    OnRebuild RebuildFunc
+}
+
+func (w *Watcher) Watch(ctx context.Context) error
+```
+
+`Watch`: create `fsnotify.NewWatcher()`, recursively add dirs (skip dotfiles/`_hidden_`). Event loop: on Write/Create/Remove/Rename reset debounce timer. On timer fire call `w.OnRebuild()`. On Create for dir, add to watcher. On `ctx.Done()` close and return.
+
+**Tests (write first):**
+1. `TestWatchDetectsFileChange` — temp dir, 50ms debounce, modify file, verify callback fires.
+2. `TestWatchDebounce` — 5 rapid writes → callback fires once.
+3. `TestWatchContextCancellation` — cancel ctx → returns nil.
+
+**Verify:** `go test ./internal/watch/...`
+</task>
+
+<task order="5" title="CLI dev command with watch + serve" depends_on="4">
+Create `kiln dev` command: full build → start watcher → serve. Wire incremental rebuild in `OnRebuild`.
+
+**Files to create:**
+- `internal/cli/dev.go` — `// @feature:cli Cobra dev command: build, watch, and serve for local development.`
+
+**Files to edit:**
+- `internal/cli/commands.go` — add `rootCmd.AddCommand(cmdDev)` at line ~107 alongside existing commands.
+
+**Implementation:**
+
+```go
+var cmdDev = &cobra.Command{
+    Use:   "dev",
+    Short: "Build, watch for changes, and serve locally",
+    Run:   runDev,
+}
+```
+
+Register same flags as `cmdGenerate` plus `--port` from `cmdServe` in `init()`.
+
+`runDev`:
+1. Load config, apply flags, set `builder.*` package vars (same as `runGenerate`).
+2. Call `builder.Build(log)` for initial full build.
+3. Create `watch.NewMtimeStore()`, call `Update(inputDir)` to populate baseline.
+4. Create `watch.NewDepGraph()`. Do a quick vault scan (`obsidian.New(...).Scan()`), call `graph.BuildFromFiles(vault.Files)`.
+5. Create `watch.Watcher` with `OnRebuild` that: calls `mtimeStore.Update(inputDir)`, calls `watch.ComputeChangeSet(changed, removed, graph)`, logs the changeset, then calls `builder.Build(log)` for a full rebuild (V1 simplicity — true incremental render is a follow-up).
+6. Use `signal.NotifyContext(context.Background(), os.Interrupt)` for clean shutdown.
+7. Start `watcher.Watch(ctx)` in a goroutine.
+8. Start `server.Serve(port, builder.OutputDir, localBaseURL, log)` on main goroutine.
+
+**Verify:** `go build ./cmd/kiln/` and `go test ./internal/...`
 </task>
 </tasks>
