@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"runtime"
 	"sort"
 
 	"html/template"
@@ -256,6 +257,7 @@ func (s *CustomSite) parseConfigs() error {
 // the output directory
 func (s *CustomSite) parseStaticFiles() error {
 	s.log.Info("Parsing static files...")
+	var imgJobs []imgopt.ImageJob
 	for _, file := range s.Files.Static {
 		// Index the asset
 		cleanName := filepath.Base(file.Path)
@@ -274,14 +276,13 @@ func (s *CustomSite) parseStaticFiles() error {
 		}
 
 		if imgopt.IsOptimizable(file.Ext) {
-			outDir := filepath.Dir(asset.OutputPath)
-			webDir := filepath.Dir(asset.RelPermalink)
-			result, err := imgopt.ProcessImage(asset.Path, outDir, webDir, file.Name, imgopt.DefaultBreakpoints())
-			if err != nil {
-				s.log.Warn("Image optimization failed, falling back to copy", "file", asset.RelPath, "error", err)
-			} else {
-				s.ImageResults[asset.RelPermalink] = result
-			}
+			imgJobs = append(imgJobs, imgopt.ImageJob{
+				SrcPath:  asset.Path,
+				OutDir:   filepath.Dir(asset.OutputPath),
+				WebDir:   filepath.Dir(asset.RelPermalink),
+				BaseName: file.Name,
+				WebPath:  asset.RelPermalink,
+			})
 		}
 
 		err := obsidian.CopyFile(asset.Path, asset.OutputPath)
@@ -292,6 +293,9 @@ func (s *CustomSite) parseStaticFiles() error {
 		s.Assets[cleanName] = asset
 
 		s.log.Info("Static file parsed correctly", "file", asset.RelPath)
+	}
+	for k, v := range imgopt.ProcessImages(imgJobs, imgopt.DefaultBreakpoints(), runtime.NumCPU()) {
+		s.ImageResults[k] = v
 	}
 	return nil
 }

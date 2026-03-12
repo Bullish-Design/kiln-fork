@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"golang.org/x/image/draw"
 )
@@ -264,4 +265,54 @@ func writeEncoded(path string, img image.Image, encode func(io.Writer, image.Ima
 		return err
 	}
 	return nil
+}
+
+type ImageJob struct {
+	SrcPath  string
+	OutDir   string
+	WebDir   string
+	BaseName string
+	WebPath  string
+}
+
+func ProcessImages(jobs []ImageJob, breakpoints []int, maxWorkers int) map[string]*Result {
+	if maxWorkers < 1 {
+		maxWorkers = 1
+	}
+
+	type entry struct {
+		webPath string
+		result  *Result
+	}
+
+	jobCh := make(chan ImageJob, len(jobs))
+	resultCh := make(chan entry, len(jobs))
+
+	var wg sync.WaitGroup
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobCh {
+				r, err := ProcessImage(job.SrcPath, job.OutDir, job.WebDir, job.BaseName, breakpoints)
+				if err != nil {
+					continue
+				}
+				resultCh <- entry{webPath: job.WebPath, result: r}
+			}
+		}()
+	}
+
+	for _, job := range jobs {
+		jobCh <- job
+	}
+	close(jobCh)
+
+	go func() { wg.Wait(); close(resultCh) }()
+
+	results := make(map[string]*Result, len(jobs))
+	for e := range resultCh {
+		results[e.webPath] = e.result
+	}
+	return results
 }

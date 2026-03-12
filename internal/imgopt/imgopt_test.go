@@ -2,6 +2,7 @@
 package imgopt
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -181,6 +182,36 @@ func TestIsOptimizable(t *testing.T) {
 	for _, tt := range tests {
 		if got := IsOptimizable(tt.ext); got != tt.want {
 			t.Errorf("IsOptimizable(%q) = %v, want %v", tt.ext, got, tt.want)
+		}
+	}
+}
+
+func TestProcessImages(t *testing.T) {
+	dir := t.TempDir()
+	outDir := filepath.Join(dir, "out")
+	os.MkdirAll(outDir, 0o755)
+
+	var jobs []ImageJob
+	for i := 0; i < 4; i++ {
+		name := fmt.Sprintf("img%d", i)
+		path := filepath.Join(dir, name+".png")
+		savePNG(t, path, newTestImage(1600, 900))
+		jobs = append(jobs, ImageJob{
+			SrcPath:  path,
+			OutDir:   outDir,
+			WebDir:   "/images",
+			BaseName: name,
+			WebPath:  "/images/" + name + ".png",
+		})
+	}
+
+	results := ProcessImages(jobs, DefaultBreakpoints(), 4)
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(results))
+	}
+	for _, job := range jobs {
+		if results[job.WebPath] == nil {
+			t.Errorf("nil result for %s", job.WebPath)
 		}
 	}
 }

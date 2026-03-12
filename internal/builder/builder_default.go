@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -139,6 +140,7 @@ func buildDefault(log *slog.Logger) {
 	}
 
 	log.Info("Copying static assets...")
+	var imgJobs []imgopt.ImageJob
 	for _, file := range staticFiles {
 		if !shouldRebuild(file.RelPath) {
 			continue
@@ -149,21 +151,20 @@ func buildDefault(log *slog.Logger) {
 			continue
 		}
 		if imgopt.IsOptimizable(file.Ext) {
-			outDir := filepath.Dir(file.OutPath)
-			webDir := filepath.Dir(file.WebPath)
-			result, err := imgopt.ProcessImage(file.Path, outDir, webDir, file.Name, imgopt.DefaultBreakpoints())
-			if err != nil {
-				l.Warn("Image optimization failed, falling back to copy", "error", err)
-				if copyErr := obsidian.CopyFile(file.Path, file.OutPath); copyErr != nil {
-					l.Error("Couldn't copy file", "error", copyErr)
-				}
-				continue
-			}
-			site.ImageResults[file.WebPath] = result
+			imgJobs = append(imgJobs, imgopt.ImageJob{
+				SrcPath:  file.Path,
+				OutDir:   filepath.Dir(file.OutPath),
+				WebDir:   filepath.Dir(file.WebPath),
+				BaseName: file.Name,
+				WebPath:  file.WebPath,
+			})
 		}
 		if copyErr := obsidian.CopyFile(file.Path, file.OutPath); copyErr != nil {
 			l.Error("Couldn't copy file", "error", copyErr)
 		}
+	}
+	for k, v := range imgopt.ProcessImages(imgJobs, imgopt.DefaultBreakpoints(), runtime.NumCPU()) {
+		site.ImageResults[k] = v
 	}
 
 	site.Markdown.ImageResults = site.ImageResults
