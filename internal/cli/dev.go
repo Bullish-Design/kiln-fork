@@ -133,7 +133,7 @@ func runDev(cmd *cobra.Command, args []string) {
 				"remove", len(cs.Remove),
 			)
 
-			builder.Build(log)
+			builder.IncrementalBuild(log, cs.Rebuild, cs.Remove)
 			return nil
 		},
 	}

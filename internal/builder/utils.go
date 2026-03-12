@@ -53,6 +53,14 @@ func CleanOutputDir(log *slog.Logger) {
 	}
 }
 
+func shouldRebuild(relPath string) bool {
+	if RebuildFilter == nil {
+		return true
+	}
+	_, ok := RebuildFilter[relPath]
+	return ok
+}
+
 // isImageExt checks if the given file extension corresponds to a supported image format.
 func isImageExt(ext string) bool {
 	switch strings.ToLower(ext) {

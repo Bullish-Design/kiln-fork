@@ -140,6 +140,9 @@ func buildDefault(log *slog.Logger) {
 
 	log.Info("Copying static assets...")
 	for _, file := range staticFiles {
+		if !shouldRebuild(file.RelPath) {
+			continue
+		}
 		l := log.With("file", file.Path)
 		if err := os.MkdirAll(filepath.Dir(file.OutPath), 0755); err != nil {
 			l.Error("Couldn't create output directory", "error", err)
@@ -196,6 +199,9 @@ func buildDefault(log *slog.Logger) {
 
 	log.Info("Rendering canvas pages...")
 	for _, file := range canvasPages {
+		if !shouldRebuild(file.RelPath) {
+			continue
+		}
 		l := log.With("file", file.Path)
 		err := site.RenderCanvas(file)
 		if err != nil {
@@ -213,6 +219,9 @@ func buildDefault(log *slog.Logger) {
 
 	log.Info("Rendering base pages...")
 	for _, base := range basePages {
+		if !shouldRebuild(base.File.RelPath) {
+			continue
+		}
 		l := log.With("file", base.File.RelPath)
 		err := site.RenderBase(&base, site.Obsidian.Vault.Files)
 		if err != nil {
@@ -230,6 +239,9 @@ func buildDefault(log *slog.Logger) {
 
 	log.Info("Rendering markdown pages...")
 	for _, note := range notePages {
+		if !shouldRebuild(note.RelPath) {
+			continue
+		}
 		l := log.With("file", note.RelPath)
 
 		err := site.RenderNote(note)
