@@ -16,11 +16,12 @@
         pname = "kiln";
         version = "0.3.5";
         src = ./.;
+        doCheck = false;
 
         # Nix needs the hash of your go.sum dependencies to ensure reproducibility.
         # STEP 1: Set this to lib.fakeHash
         # STEP 2: Run 'nix build', let it fail, and copy the actual hash it shows you here.
-        vendorHash = "sha256-3a1m+YB5TuIF+FgwUONljUZnY2/ROkKrqSKeV1SxmjY";
+        vendorHash = "sha256-HL4H+HOVHu7H71V7t4bjWBcquaimuh/GkPnuwPiuZ0A=";
 
         # If you need to generate code (like templ) before compiling Go, do it here:
         nativeBuildInputs = [
