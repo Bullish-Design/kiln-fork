@@ -3,8 +3,12 @@ package cli
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/otaleghani/kiln/internal/builder"
 	"github.com/otaleghani/kiln/internal/obsidian"
@@ -12,6 +16,18 @@ import (
 	"github.com/otaleghani/kiln/internal/watch"
 	"github.com/spf13/cobra"
 )
+
+var rebuildClient = &http.Client{Timeout: 5 * time.Second}
+
+func postRebuildWebhook(url string, log *slog.Logger) {
+	body := strings.NewReader(`{"type":"rebuilt"}`)
+	resp, err := rebuildClient.Post(url, "application/json", body)
+	if err != nil {
+		log.Error("on-rebuild webhook failed", "url", url, "err", err)
+		return
+	}
+	resp.Body.Close()
+}
 
 var cmdDev = &cobra.Command{
 	Use:   "dev",
