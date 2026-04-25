@@ -87,6 +87,24 @@
     go run ./cmd/kiln doctor "$@"
   '';
 
+  scripts."demo-test-setup".exec = ''
+    mkdir -p ./demo/.gocache ./demo/.gomodcache ./demo/logs ./demo/out ./demo/public ./demo/tmp
+    export GOCACHE="$PWD/demo/.gocache"
+    export GOMODCACHE="$PWD/demo/.gomodcache"
+    go build -o ./demo/out/kiln ./cmd/kiln
+  '';
+
+  scripts."demo-test-run".exec = ''
+    demo-test-setup
+    export GOCACHE="$PWD/demo/.gocache"
+    export GOMODCACHE="$PWD/demo/.gomodcache"
+
+    ./demo/out/kiln doctor --input ./demo/vault > ./demo/logs/demo_doctor.log 2>&1
+    ./demo/out/kiln generate --input ./demo/vault --output ./demo/public > ./demo/logs/demo_generate.log 2>&1
+
+    echo "Demo test run complete. See demo/logs/demo_doctor.log and demo/logs/demo_generate.log"
+  '';
+
   scripts.clean.exec = ''
     rm -rf ./kiln ./public ./tmp
     go clean -cache -testcache
