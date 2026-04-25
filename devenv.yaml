@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+inputs:
+  # Keep this on unstable so Go 1.25 and recent tooling are available.
+  nixpkgs:
+    url: github:nixos/nixpkgs?ref=nixos-unstable
