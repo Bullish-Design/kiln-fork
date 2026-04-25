@@ -84,6 +84,8 @@ var (
 	disableBacklinks  bool   // Disable the backlinks panel
 	lang              string // Language code for the site
 	accentColor       string // Accent color override from theme palette
+	noServe           bool   // Skip starting the HTTP server in dev mode
+	onRebuildURL      string // URL to POST {"type":"rebuilt"} after each successful rebuild
 )
 
 // Init constructs and returns the root command for the application.
