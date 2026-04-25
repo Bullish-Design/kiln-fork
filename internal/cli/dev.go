@@ -169,6 +169,9 @@ func runDev(cmd *cobra.Command, args []string) {
 			}
 			graph.UpdateFiles(vault.Vault.Files)
 
+			if onRebuildURL != "" {
+				postRebuildWebhook(onRebuildURL, log)
+			}
 			return nil
 		},
 	}
