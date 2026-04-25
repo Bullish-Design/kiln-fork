@@ -187,7 +187,11 @@ func runDev(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// Serve on main goroutine
-	localBaseURL := "http://localhost:" + port
-	server.Serve(ctx, port, builder.OutputDir, localBaseURL, log)
+	if noServe {
+		// Block until signal; serving is handled by an external overlay
+		<-ctx.Done()
+	} else {
+		localBaseURL := "http://localhost:" + port
+		server.Serve(ctx, port, builder.OutputDir, localBaseURL, log)
+	}
 }
