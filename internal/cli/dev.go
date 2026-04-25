@@ -52,6 +52,10 @@ func init() {
 		StringVarP(&accentColor, FlagAccentColor, FlagAccentColorShort, DefaultAccentColor, "Accent color from theme palette (red, orange, yellow, green, blue, purple, cyan)")
 	cmdDev.Flags().
 		StringVarP(&port, FlagPort, FlagPortShort, DefaultPort, "Port to serve on")
+	cmdDev.Flags().
+		BoolVar(&noServe, "no-serve", false, "Skip starting the HTTP server (for use with an external overlay)")
+	cmdDev.Flags().
+		StringVar(&onRebuildURL, "on-rebuild", "", "URL to POST {\"type\":\"rebuilt\"} after each successful rebuild")
 }
 
 func runDev(cmd *cobra.Command, args []string) {
