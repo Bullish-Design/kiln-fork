@@ -13,7 +13,7 @@ var cmdVersion = &cobra.Command{
 	Run:   runVersion,
 }
 
-var version = "v0.10.0"
+var version = "v0.10.1"
 
 // runStats executes the statistics calculation logic.
 func runVersion(cmd *cobra.Command, args []string) {
