@@ -110,13 +110,13 @@ func TestHead_OGMetaTags(t *testing.T) {
 	expected := []string{
 		`<meta property="og:title" content="My Title"`,
 		`<meta property="og:description" content="My Desc"`,
-		`<meta property="og:image" content="https://example.com/blog/my-post/og.png"`,
+		`<meta property="og:image" content="https://example.com/blog/my-post-og.png"`,
 		`<meta property="og:url" content="https://example.com/blog/my-post"`,
 		`<meta property="og:type" content="article"`,
 		`<meta name="twitter:card" content="summary_large_image"`,
 		`<meta name="twitter:title" content="My Title"`,
 		`<meta name="twitter:description" content="My Desc"`,
-		`<meta name="twitter:image" content="https://example.com/blog/my-post/twitter.png"`,
+		`<meta name="twitter:image" content="https://example.com/blog/my-post-twitter.png"`,
 	}
 
 	for _, want := range expected {

@@ -849,8 +849,12 @@ func (s *DefaultSite) GeneratePageOGImages(title, description, slug, outDir stri
 		Face:        s.OGFontFace,
 	}
 
-	ogName := slug + "-og.png"
-	twitterName := slug + "-twitter.png"
+	ogName := "og.png"
+	twitterName := "twitter.png"
+	if slug != "" {
+		ogName = slug + "-og.png"
+		twitterName = slug + "-twitter.png"
+	}
 
 	if err := ogimage.GenerateOGImage(cfg, filepath.Join(outDir, ogName)); err != nil {
 		s.log.Warn("Couldn't generate OG image", "error", err)
