@@ -43,6 +43,8 @@ This reads from `./vault`, writes to `./public`, applies the default theme, font
 | `--accent-color`        | `-a`  | `""`      | Accent color from the theme palette (`red`, `orange`, `yellow`, `green`, `blue`, `purple`, `cyan`). Defaults to the theme's built-in accent. |
 | `--log`                 | `-l`  | `info`    | Log verbosity. Choose `info` or `debug`.                                                                                                 |
 | `--port`                | `-p`  | `8080`    | Port number for the local development server.                                                                                            |
+| `--no-serve`            |       | `false`   | Runs build/watch loop without starting the embedded HTTP server. Useful with an external overlay or proxy.                              |
+| `--on-rebuild`          |       | `""`      | Sends `POST {"type":"rebuilt"}` to the URL after each successful incremental rebuild.                                                    |
 
 ## How It Works
 
@@ -56,6 +58,8 @@ When you run `kiln dev`, the following steps happen in order:
 6. **Incremental rebuild** — when the watcher detects a file change, it compares current modification times against the baseline, computes a changeset of affected files using the dependency graph, and triggers a rebuild.
 
 Press `Ctrl+C` to cleanly shut down both the watcher and the server. The command intercepts `SIGINT` and `SIGTERM` signals for a graceful exit.
+
+When `--on-rebuild` is set, webhook delivery failures are logged but do not stop the watcher or rebuild loop.
 
 ## Examples
 
@@ -88,6 +92,22 @@ kiln dev \
   --input ./notes \
   --output ./dist \
   --url "https://example.com/docs"
+```
+
+### External Overlay Integration
+
+Run watch mode without the built-in server and notify an external service after each rebuild:
+
+```bash
+kiln dev --no-serve --on-rebuild http://127.0.0.1:8080/internal/rebuild
+```
+
+### Watch-Only Mode
+
+Run incremental rebuilds without serving HTTP:
+
+```bash
+kiln dev --no-serve
 ```
 
 ## Related Commands
